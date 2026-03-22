@@ -1,5 +1,6 @@
 import logging
 import time
+import importlib.util
 from pathlib import Path
 from typing import cast
 
@@ -22,6 +23,7 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.utils.import_utils import is_flash_attn_3_available
 
 from prime_rl.configs.trainer import ActivationCheckpointConfig, CompileConfig, ModelConfig, TokenizerConfig
+from prime_rl.trainer.distributed import DeepEPExpertParallel
 from prime_rl.trainer.lora import apply_lora_to_model, freeze_all_except_lora_and_specified, strip_lora_from_state_dict
 from prime_rl.trainer.models import (
     AutoModelForCausalLMPrimeRL,
@@ -165,6 +167,29 @@ def freeze_moe_router(model: nn.Module) -> None:
 
 def is_tt_moe_model(model: nn.Module) -> bool:
     return hasattr(model.config, "num_experts") or hasattr(model.config, "n_routed_experts")
+
+
+def _validate_ep_comm_backend_runtime(config: ModelConfig) -> None:
+    if config.ep_comm_backend == "standard":
+        return
+    if not torch.cuda.is_available():
+        raise ValueError(f"{config.ep_comm_backend} requires CUDA.")
+    if importlib.util.find_spec("deep_ep") is None:
+        raise ValueError("model.ep_comm_backend='deepep' requires the `deep_ep` package to be installed.")
+
+    major, _minor = torch.cuda.get_device_capability()
+    if major < 8:
+        raise ValueError("DeepEP requires Ampere-or-newer CUDA GPUs.")
+
+
+def _configure_moe_ep_backend(model: nn.Module, config: ModelConfig) -> None:
+    backend = config.ep_comm_backend
+    language_model = get_language_model(model)
+    for transformer_block in language_model.layers:
+        if not isinstance(transformer_block.mlp, MoE):
+            continue
+        transformer_block.mlp.set_ep_comm_backend(backend)
+
 
 
 def get_load_balance_stats(
@@ -659,15 +684,19 @@ def apply_compile(model: nn.Module, compile_config: CompileConfig):
     get_logger().info(f"Compiled {len(language_model.layers)} layers (fullgraph={compile_config.fullgraph})")
 
 
-def apply_ep(model: nn.Module, parallel_dims: ParallelDims):
+def apply_ep(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDims):
     language_model = get_language_model(model)
     for transformer_block in language_model.layers:
         block_mlp = getattr(transformer_block, "mlp", None)
         if block_mlp is not None and isinstance(block_mlp, (MoE, LatentMoE)):
+            if config.ep_comm_backend == "standard":
+                parallelize_plan = ExpertParallel()
+            else:
+                parallelize_plan = DeepEPExpertParallel()
             parallelize_module(
                 block_mlp.experts,
                 device_mesh=parallel_dims.get_mesh("ep"),
-                parallelize_plan=ExpertParallel(),
+                parallelize_plan=parallelize_plan,
             )
 
 
@@ -741,6 +770,8 @@ def setup_model(
 
     # 1. We load to meta device by default
     model = get_model(config, device=torch.device("meta"), dtype=DTYPE_MAP[config.optimization_dtype])
+    _validate_ep_comm_backend_runtime(config)
+    _configure_moe_ep_backend(model, config)
 
     possible_to_load_to_meta = can_reinit_empty_buffers(model)
 
@@ -753,6 +784,7 @@ def setup_model(
     if not possible_to_load_to_meta:
         logger.warning("Cannot load model to meta device only, loading to CPU instead.")
         model = get_model(config, device=torch.device("cpu"), dtype=DTYPE_MAP[config.optimization_dtype])
+        _configure_moe_ep_backend(model, config)
 
     lm_head_chunk_size: int | None = None
     if isinstance(config.fused_lm_head_token_chunk_size, int):
@@ -768,7 +800,7 @@ def setup_model(
         freeze_moe_router(model)
 
     if parallel_dims.ep_enabled:
-        apply_ep(model, parallel_dims)
+        apply_ep(model, config, parallel_dims)
         # EP replaces params with DTensors that default to requires_grad=True,
         # re-freeze base params that LoRA froze earlier.
         if config.lora is not None:
