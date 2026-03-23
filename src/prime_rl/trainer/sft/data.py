@@ -167,14 +167,14 @@ class SFTDataset(StatefulIterableDataset):
             # as a whole-chat training sample with an empty prompt.
             if "messages" in example:
                 messages = normalize_messages(example["messages"], default_role="assistant")
-            else:
-                if "prompt" not in example or "completion" not in example:
-                    raise ValueError(
-                        "All examples in the dataset must have either a 'messages' column "
-                        "or both 'prompt' and 'completion' columns for SFT"
-                    )
+            elif "prompt" in example and "completion" in example:
                 messages = normalize_messages(example["prompt"], default_role="user") + normalize_messages(
                     example["completion"], default_role="assistant"
+                )
+            else:
+                raise ValueError(
+                    "All examples in the dataset must have either a 'messages' column "
+                    "or both 'prompt' and 'completion' columns for SFT"
                 )
 
             # Deserialize tool call arguments from message list, if present - assumes OAI format
