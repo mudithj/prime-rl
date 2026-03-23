@@ -232,6 +232,18 @@ class ModelConfig(BaseModelConfig):
         ),
     ] = "standard"
 
+    deepep_num_sms: Annotated[
+        int,
+        Field(
+            ge=1,
+            description=(
+                "Number of SMs to allocate for DeepEP intranode dispatch/combine kernels. "
+                "48 satisfies internode RDMA constraints (num_channels=24) while providing good throughput. "
+                "Only used when ep_comm_backend='deepep'."
+            ),
+        ),
+    ] = 48
+
     tp: Annotated[
         int,
         Field(

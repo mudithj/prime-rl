@@ -181,6 +181,10 @@ def _validate_ep_comm_backend_runtime(config: ModelConfig) -> None:
     if major < 8:
         raise ValueError("DeepEP requires Ampere-or-newer CUDA GPUs.")
 
+    from prime_rl.trainer.distributed.deepep import configure_num_sms
+
+    configure_num_sms(config.deepep_num_sms)
+
 
 def _configure_moe_ep_backend(model: nn.Module, config: ModelConfig) -> None:
     backend = config.ep_comm_backend

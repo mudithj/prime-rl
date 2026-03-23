@@ -165,6 +165,20 @@ def sync_combine() -> None:
         _pending_combine_event = None
 
 
+_num_sms_configured = False
+
+
+def configure_num_sms(num_sms: int) -> None:
+    """Set the number of SMs for DeepEP intranode dispatch/combine kernels.
+
+    Must be called before the first dispatch/combine. 48 is the default,
+    satisfying internode RDMA constraints (num_channels = num_sms / 2 = 24).
+    """
+    global _num_sms_configured
+    Buffer.set_num_sms(num_sms)
+    _num_sms_configured = True
+
+
 def get_hidden_bytes(x: torch.Tensor) -> int:
     return x.size(1) * max(x.element_size(), 2)
 
@@ -285,4 +299,4 @@ def combine_tokens(hidden_states: torch.Tensor, state: DispatchState) -> torch.T
     return torch.ops.deepep.combine(hidden_states, state.handle_id)
 
 
-__all__ = ["DispatchState", "combine_tokens", "dispatch_tokens", "sync_combine"]
+__all__ = ["DispatchState", "combine_tokens", "configure_num_sms", "dispatch_tokens", "sync_combine"]
