@@ -171,8 +171,8 @@ _num_sms_configured = False
 def configure_num_sms(num_sms: int) -> None:
     """Set the number of SMs for DeepEP intranode dispatch/combine kernels.
 
-    Must be called before the first dispatch/combine. 48 is the default,
-    satisfying internode RDMA constraints (num_channels = num_sms / 2 = 24).
+    Must be called before the first dispatch/combine. Also determines
+    internode RDMA channel count (num_channels = num_sms / 2).
     """
     global _num_sms_configured
     Buffer.set_num_sms(num_sms)

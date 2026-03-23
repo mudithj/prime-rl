@@ -239,11 +239,13 @@ class ModelConfig(BaseModelConfig):
             ge=1,
             description=(
                 "Number of SMs to allocate for DeepEP intranode dispatch/combine kernels. "
-                "48 satisfies internode RDMA constraints (num_channels=24) while providing good throughput. "
+                "Also determines internode RDMA channel count (num_channels = num_sms / 2). "
+                "Lower values leave more SMs for compute; higher values speed up dispatch/combine. "
+                "The optimal value depends on the EP degree and hardware."
                 "Only used when ep_comm_backend='deepep'."
             ),
         ),
-    ] = 48
+    ] = 24
 
     tp: Annotated[
         int,
