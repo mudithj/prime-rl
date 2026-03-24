@@ -116,10 +116,12 @@ def _combine_op_impl(x: torch.Tensor, handle_id: torch.Tensor) -> torch.Tensor:
     global _pending_combine_event
 
     assert _buffer is not None, "DeepEP buffer must be initialized before combine."
-    if torch.is_inference_mode_enabled():
-        handle = _handle_cache.pop(handle_id.item(), None)
-    else:
+    # setup_context only runs when autograd is tracking this op, so pop the
+    # handle eagerly for no-grad and non-differentiable forwards.
+    if torch.is_grad_enabled() and x.requires_grad:
         handle = _handle_cache.get(handle_id.item())
+    else:
+        handle = _handle_cache.pop(handle_id.item(), None)
     assert handle is not None, f"Handle not found for handle_id={handle_id.item()}"
 
     previous_event = EventOverlap(EventHandle())
