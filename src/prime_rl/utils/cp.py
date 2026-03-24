@@ -1,6 +1,80 @@
+from __future__ import annotations
+
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 from ring_flash_attn import update_ring_flash_attn_params
+
+
+class _CPGather(torch.autograd.Function):
+    """All-gather along sequence dim (dim=1) in forward, chunk in backward."""
+
+    @staticmethod
+    def forward(ctx, x: torch.Tensor, cp_group: dist.ProcessGroup, cp_rank: int, cp_world_size: int) -> torch.Tensor:
+        ctx.cp_rank = cp_rank
+        ctx.cp_world_size = cp_world_size
+        gathered = [torch.empty_like(x) for _ in range(cp_world_size)]
+        dist.all_gather(gathered, x.contiguous(), group=cp_group)
+        return torch.cat(gathered, dim=1)
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        return grad_output.chunk(ctx.cp_world_size, dim=1)[ctx.cp_rank].contiguous(), None, None, None
+
+
+class _CPScatter(torch.autograd.Function):
+    """Chunk along sequence dim (dim=1) in forward, all-gather in backward."""
+
+    @staticmethod
+    def forward(ctx, x: torch.Tensor, cp_group: dist.ProcessGroup, cp_rank: int, cp_world_size: int) -> torch.Tensor:
+        ctx.cp_group = cp_group
+        ctx.cp_world_size = cp_world_size
+        return x.chunk(cp_world_size, dim=1)[cp_rank].contiguous()
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        gathered = [torch.empty_like(grad_output) for _ in range(ctx.cp_world_size)]
+        dist.all_gather(gathered, grad_output.contiguous(), group=ctx.cp_group)
+        return torch.cat(gathered, dim=1), None, None, None
+
+
+def cp_gather(x: torch.Tensor, cp_group: dist.ProcessGroup, cp_rank: int, cp_world_size: int) -> torch.Tensor:
+    """All-gather tensor along seq dim for hybrid CP (DeltaNet layers)."""
+    return _CPGather.apply(x, cp_group, cp_rank, cp_world_size)
+
+
+def cp_scatter(x: torch.Tensor, cp_group: dist.ProcessGroup, cp_rank: int, cp_world_size: int) -> torch.Tensor:
+    """Scatter tensor along seq dim back to CP shards."""
+    return _CPScatter.apply(x, cp_group, cp_rank, cp_world_size)
+
+
+def setup_hybrid_cp(model: nn.Module, cp_group: dist.ProcessGroup, cp_rank: int, cp_world_size: int) -> None:
+    """Configure DeltaNet modules in Qwen3.5 hybrid models for native fla CP."""
+    layers = None
+    if hasattr(model, "model"):
+        inner = model.model
+        if hasattr(inner, "language_model"):
+            inner = inner.language_model
+        if hasattr(inner, "layers"):
+            layers = inner.layers
+
+    if layers is None:
+        return
+
+    count = 0
+    for layer in layers:
+        if getattr(layer, "layer_type", None) == "linear_attention":
+            attn = getattr(layer, "linear_attn", None)
+            if attn is not None:
+                attn.cp_group = cp_group
+                attn.cp_rank = cp_rank
+                attn.cp_world_size = cp_world_size
+                count += 1
+
+    if count > 0:
+        from prime_rl.utils.logger import get_logger
+
+        get_logger().info(f"Configured hybrid CP on {count} DeltaNet modules (fla native state passing)")
 
 
 def shard_for_cp(t: torch.Tensor, cp_rank: int, cp_world_size: int) -> torch.Tensor:

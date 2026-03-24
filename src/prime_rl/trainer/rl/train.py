@@ -176,12 +176,13 @@ def train(config: TrainerConfig):
         weight_broadcast = setup_weight_broadcast(config.output_dir, config.weight_broadcast, config.model.lora)
 
     if parallel_dims.cp_enabled:
-        substitute_hf_flash_attn(parallel_dims.world_mesh["cp"].get_group(), heads_k_stride=1)
-        substitute_ring_attn(
-            parallel_dims.world_mesh["cp"].get_group(),
-            heads_k_stride=1,
-            attn_impl=config.model.attn,
-        )
+        cp_group = parallel_dims.world_mesh["cp"].get_group()
+        cp_rank = parallel_dims.world_mesh["cp"].get_local_rank()
+        substitute_hf_flash_attn(cp_group, heads_k_stride=1)
+        substitute_ring_attn(cp_group, heads_k_stride=1, attn_impl=config.model.attn)
+        from prime_rl.utils.cp import setup_hybrid_cp
+
+        setup_hybrid_cp(model, cp_group, cp_rank, parallel_dims.cp)
 
     # Optionally, resume training from a checkpoint
     progress = Progress()
@@ -361,8 +362,7 @@ def train(config: TrainerConfig):
             if config.model.lora:
                 lora_num_tokens = micro_batch["lora_num_tokens"].to("cuda")
                 if cp_enabled:
-                    chunk_size = input_ids.shape[1]  # We pad to multiple of cp so this should be fine
-                    logger.debug(f"[Rank {world.rank}] {cp_rank=} {cp_size=} {cp_group=} {chunk_size=}")
+                    chunk_size = input_ids.shape[1]
                     # Convert to cumsum, adjust for CP chunk, convert back to num_tokens
                     cu_offsets = lora_num_tokens.cumsum(dim=0, dtype=torch.int32)
                     adjusted_cu = torch.clip(cu_offsets - chunk_size * cp_rank, min=0, max=chunk_size)

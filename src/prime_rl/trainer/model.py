@@ -249,11 +249,13 @@ def get_model(
     logger.debug(f"Loaded model config ({model_config.to_dict()})")
 
     if config.debug.num_layers is not None:
-        num_hidden_layers = min(config.debug.num_layers, model_config.num_hidden_layers)
+        # VLM configs nest num_hidden_layers under text_config
+        target_config = getattr(model_config, "text_config", model_config)
+        num_hidden_layers = min(config.debug.num_layers, target_config.num_hidden_layers)
         logger.warning(
-            f"Setting the number of layers to {config.debug.num_layers} in the model config. This means {model_config.num_hidden_layers - num_hidden_layers} layers will not be loaded."
+            f"Setting the number of layers to {config.debug.num_layers} in the model config. This means {target_config.num_hidden_layers - num_hidden_layers} layers will not be loaded."
         )
-        model_config.num_hidden_layers = num_hidden_layers
+        target_config.num_hidden_layers = num_hidden_layers
 
     # Determine the implementation to use
     custom_vlm_cls = get_custom_vlm_cls(model_config) if is_vlm else None

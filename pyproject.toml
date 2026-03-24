@@ -33,6 +33,7 @@ dependencies = [
     "verifiers",
     "dion",
     "tilelang>=0.1.8",
+    "flash-linear-attention",
 ]
 
 [project.scripts]
@@ -120,6 +121,7 @@ color-codeword = { index = "primeintellect" }
 math500 = { index = "primeintellect" }
 aime2024 = { index = "primeintellect" }
 aime2025 = { index = "primeintellect" }
+flash-linear-attention = { git = "https://github.com/fla-org/flash-linear-attention" }
 
 [tool.uv.extra-build-dependencies]
 flash-attn = [{ requirement = "torch", match-runtime = true }]

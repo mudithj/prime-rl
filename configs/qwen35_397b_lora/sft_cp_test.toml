@@ -1,0 +1,33 @@
+# Usage: uv run sft @ configs/qwen35_397b_lora/sft_cp_test.toml
+#
+# Qwen3.5-35B-A3B SFT with CP=2 on 1 node for testing hybrid CP.
+
+output_dir = "outputs/qwen35-35b-sft-cp-test"
+clean_output_dir = true
+max_steps = 5
+
+[deployment]
+type = "single_node"
+num_gpus = 8
+
+[model]
+impl = "custom"
+name = "Qwen/Qwen3.5-35B-A3B"
+attn = "flash_attention_2"
+cp = 2
+fused_lm_head_token_chunk_size = "disabled"
+
+[model.ac]
+freq = 1
+
+[model.debug]
+random_init = true
+num_layers = 8
+
+[data]
+type = "fake"
+batch_size = 8
+seq_len = 4096
+
+[optim]
+lr = 1e-5
