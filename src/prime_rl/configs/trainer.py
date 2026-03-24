@@ -526,6 +526,13 @@ class CheckpointConfig(BaseConfig):
         ),
     ] = False
 
+    skip_optimizer: Annotated[
+        bool,
+        Field(
+            description="Whether to skip loading the optimizer state from checkpoint.",
+        ),
+    ] = False
+
 
 class DefaultLossConfig(BaseModel):
     """Config for the default loss."""

@@ -118,6 +118,7 @@ class CheckpointManager:
 
     def __init__(self, output_dir: Path, config: CheckpointConfig):
         self.config = config
+        self.skip_optimizer = config.skip_optimizer
         self.ckpt_dir = get_ckpt_dir(output_dir)
         self.logger = get_logger()
         self.world = get_world()
@@ -179,7 +180,7 @@ class CheckpointManager:
         start_time = time.perf_counter()
 
         # Load sharded state
-        app_state = AppState(model, optimizers, scheduler, progress)
+        app_state = AppState(model, optimizers if not self.skip_optimizer else [], scheduler, progress)
         state_dict = {"app": app_state}
         dcp_load(state_dict=state_dict, checkpoint_id=path)
 

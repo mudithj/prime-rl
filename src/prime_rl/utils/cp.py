@@ -1,6 +1,38 @@
+from __future__ import annotations
+
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 from ring_flash_attn import update_ring_flash_attn_params
+
+
+def setup_hybrid_cp(model: nn.Module, cp_group: dist.ProcessGroup, cp_rank: int, cp_world_size: int) -> None:
+    """Configure DeltaNet modules in Qwen3.5 hybrid models for native fla CP."""
+    layers = None
+    if hasattr(model, "model"):
+        inner = model.model
+        if hasattr(inner, "language_model"):
+            inner = inner.language_model
+        if hasattr(inner, "layers"):
+            layers = inner.layers
+
+    if layers is None:
+        return
+
+    count = 0
+    for layer in layers:
+        if getattr(layer, "layer_type", None) == "linear_attention":
+            attn = getattr(layer, "linear_attn", None)
+            if attn is not None:
+                attn.cp_group = cp_group
+                attn.cp_rank = cp_rank
+                attn.cp_world_size = cp_world_size
+                count += 1
+
+    if count > 0:
+        from prime_rl.utils.logger import get_logger
+
+        get_logger().info(f"Configured hybrid CP on {count} DeltaNet modules (fla native state passing)")
 
 
 def shard_for_cp(t: torch.Tensor, cp_rank: int, cp_world_size: int) -> torch.Tensor:

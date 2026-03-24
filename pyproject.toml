@@ -33,6 +33,7 @@ dependencies = [
     "verifiers",
     "dion",
     "tilelang>=0.1.8",
+    "flash-linear-attention",
 ]
 
 [project.scripts]
@@ -74,6 +75,9 @@ envs = [
 [dependency-groups]
 fp8-inference = [
     "deep-gemm @ https://github.com/hallerite/DeepGEMM/releases/download/v2.3.0-torch2.9/deep_gemm-2.3.0+35c4bc8-cp312-cp312-linux_x86_64.whl ; platform_machine == 'x86_64'",
+]
+mamba-ssm = [
+    "mamba-ssm>=2.3.0",
 ]
 dev = [
     "ipykernel>=6.29.5",
@@ -120,6 +124,7 @@ color-codeword = { index = "primeintellect" }
 math500 = { index = "primeintellect" }
 aime2024 = { index = "primeintellect" }
 aime2025 = { index = "primeintellect" }
+flash-linear-attention = { git = "https://github.com/fla-org/flash-linear-attention" }
 
 [tool.uv.extra-build-dependencies]
 flash-attn = [{ requirement = "torch", match-runtime = true }]

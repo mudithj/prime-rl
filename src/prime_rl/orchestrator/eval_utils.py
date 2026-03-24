@@ -114,6 +114,10 @@ async def evaluate_env(
     )
     eval_time = time.perf_counter() - eval_start_time
 
+    if not outputs:
+        logger.warning(f"All rollouts failed for {env_name}, skipping metrics")
+        return
+
     rows = []
     for output in outputs:
         rows.append(

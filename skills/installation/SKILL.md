@@ -23,6 +23,18 @@ uv sync --all-extras
 
 This installs all optional extras (flash-attn, flash-attn-cute, etc.) in one go.
 
+## Mamba-SSM (NemotronH models)
+
+For NemotronH (hybrid Mamba-Transformer-MoE) models, install `mamba-ssm` for Triton-based SSD kernels that match vLLM's precision:
+
+```bash
+CUDA_HOME=/usr/local/cuda uv pip install mamba-ssm
+```
+
+Requires `nvcc` (CUDA toolkit). Without `mamba-ssm`, NemotronH falls back to HF's pure-PyTorch implementation which computes softplus in bf16, causing ~0.4 KL divergence vs vLLM.
+
+Note: do NOT install `causal-conv1d` unless your GPU architecture matches the compiled CUDA kernels. The code automatically falls back to PyTorch nn.Conv1d when it's absent.
+
 ## FP8 inference with deep-gemm
 
 For certain models like GLM-5-FP8, you need `deep-gemm`. Install it via the `fp8-inference` dependency group:
