@@ -149,7 +149,7 @@ def default_loss_fn(inputs: LossInputs, loss_config: DefaultLossConfig) -> LossO
         teacher_kl = None
 
     pg_loss = advantages * importance_ratio
-    kl_loss = loss_mask * masked_log_importance_ratio**2
+    kl_loss = loss_mask * log_importance_ratio**2
     loss = (-pg_loss + loss_config.kl_tau * kl_loss).sum()
 
     metrics = {
