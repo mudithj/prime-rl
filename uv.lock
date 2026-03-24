@@ -2533,7 +2533,7 @@ requires-dist = [
     { name = "torchtitan", git = "https://github.com/pytorch/torchtitan?rev=a1fdd7e" },
     { name = "transformers", git = "https://github.com/huggingface/transformers.git?rev=5c1c72b" },
     { name = "uvloop", specifier = ">=0.21.0" },
-    { name = "verifiers", git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=8dffd10eedbe656a699b0d99ed82b4d18b37b03f" },
+    { name = "verifiers", git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=39bb485" },
     { name = "vllm", specifier = ">=0.17.0" },
     { name = "wandb", specifier = ">=0.24.2" },
     { name = "wiki-search", marker = "extra == 'envs'", index = "https://hub.primeintellect.ai/primeintellect/simple/" },
@@ -3733,7 +3733,7 @@ wheels = [
 [[package]]
 name = "verifiers"
 version = "0.1.12.dev0"
-source = { git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=8dffd10eedbe656a699b0d99ed82b4d18b37b03f#8dffd10eedbe656a699b0d99ed82b4d18b37b03f" }
+source = { git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=39bb485#39bb485cfce62f1e19e6019e29248d2c262dda25" }
 dependencies = [
     { name = "aiolimiter", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "anthropic", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
