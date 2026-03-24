@@ -13,7 +13,6 @@ from prime_rl.configs.shared import (
     WandbConfig,
 )
 from prime_rl.utils.config import BaseConfig
-from prime_rl.utils.usage_reporter import UsageConfig
 
 # -- Shared trainer configs (used by both SFT and RL trainers) --
 
@@ -702,11 +701,6 @@ class TrainerConfig(BaseConfig):
     metrics_server: Annotated[
         MetricsServerConfig | None,
         Field(description="Prometheus metrics server config. If set, exposes /metrics endpoint for scraping."),
-    ] = None
-
-    usage: Annotated[
-        UsageConfig | None,
-        Field(description="Platform usage reporting. Reports training tokens after each checkpoint for billing."),
     ] = None
 
     max_concurrent_runs: Annotated[

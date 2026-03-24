@@ -750,7 +750,7 @@ class OrchestratorConfig(BaseConfig):
 
     usage: Annotated[
         UsageConfig | None,
-        Field(description="Platform usage reporting. Reports inference tokens per step for billing."),
+        Field(description="Platform usage reporting. Reports inference and training tokens per step for billing."),
     ] = None
 
     # The checkpoint configuration

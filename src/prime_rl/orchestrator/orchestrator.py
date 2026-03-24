@@ -832,6 +832,11 @@ async def orchestrate(config: OrchestratorConfig):
                 input_tokens=num_prefill_tokens,
                 output_tokens=num_decode_tokens,
             )
+            usage_reporter.report_training_usage(
+                run_id=run_id,
+                step=progress.step,
+                tokens=num_prefill_tokens + num_decode_tokens,
+            )
 
         reward_mean = by_example.reward.mean().mean()
         val_reward_str = ""
@@ -884,6 +889,8 @@ async def orchestrate(config: OrchestratorConfig):
     if ckpt_manager is not None:
         logger.info("Writing final checkpoint")
         ckpt_manager.save(progress, buffer, step=progress.step)
+
+    usage_reporter.close()
 
     # Close training batch sender
     training_batch_sender.close()
