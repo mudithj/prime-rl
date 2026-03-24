@@ -26,6 +26,20 @@ def test_grpo_loss():
     )
     assert loss.shape == ()
 
+    # Stale inference logprobs can cause exp(log_importance_ratio) to overflow to Inf.
+    # The IPO mask catches divergent tokens, but mask * Inf = NaN without torch.where.
+    inference_logprobs[0][25] = -100.0
+    loss, _ = compute_loss(
+        trainer_logprobs,
+        inference_logprobs,
+        teacher_logprobs,
+        advantages,
+        loss_mask=loss_mask,
+        loss_fn=setup_loss_fn(DefaultLossConfig()),
+        loss_scale=1.0,
+    )
+    assert not torch.isnan(loss), f"Loss is NaN from stale logprobs: {loss}"
+    assert not torch.isinf(loss), f"Loss is Inf from stale logprobs: {loss}"
 
 def test_gspo_loss():
     trainer_logprobs = [torch.randn(40, dtype=torch.float32).cuda(), torch.randn(60, dtype=torch.float32).cuda()]

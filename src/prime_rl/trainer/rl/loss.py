@@ -145,7 +145,8 @@ def default_loss_fn(inputs: LossInputs, loss_config: DefaultLossConfig) -> LossO
     else:
         teacher_kl = None
 
-    pg_loss = keep_mask * advantages * importance_ratio
+    zeros = torch.zeros_like(advantages)
+    pg_loss = torch.where(keep_mask, advantages * importance_ratio, zeros)
     kl_loss = loss_mask * log_importance_ratio**2
     loss = (-pg_loss + loss_config.kl_tau * kl_loss).sum()
 
