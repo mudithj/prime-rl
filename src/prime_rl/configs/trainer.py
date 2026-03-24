@@ -394,10 +394,6 @@ class ModelConfig(BaseModelConfig):
 
         if self.ep <= 1:
             raise ValueError(f"model.ep_comm_backend='{self.ep_comm_backend}' requires model.ep > 1.")
-        if self.tp != 1:
-            raise ValueError(
-                f"model.ep_comm_backend='{self.ep_comm_backend}' is currently only supported with model.tp=1."
-            )
         if self.lora is not None:
             raise ValueError(
                 f"model.ep_comm_backend='{self.ep_comm_backend}' is not currently supported together with LoRA."

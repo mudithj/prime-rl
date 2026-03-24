@@ -502,7 +502,7 @@ class MoE(nn.Module):
             self.tokens_per_expert.add_(num_tokens_per_expert)
 
         if self.ep_comm_backend == "deepep":
-            from prime_rl.trainer.distributed.deepep import combine_tokens, dispatch_tokens, sync_combine
+            from prime_rl.trainer.distributed.deepep import dispatch_tokens
             from prime_rl.trainer.distributed.expert_parallel import get_ep_group
 
             hidden_states, num_tokens_per_expert, dispatch_state = dispatch_tokens(
@@ -513,11 +513,10 @@ class MoE(nn.Module):
                 group=get_ep_group(self.experts),
                 score_before_experts=self.score_before_experts,
             )
+            self.experts._deepep_dispatch_state = dispatch_state
             routed_output = self._run_routed_experts(hidden_states, num_tokens_per_expert)
-            routed_output = combine_tokens(routed_output, dispatch_state)
 
             shared_output = self.shared_expert(x) if self.shared_expert is not None else None
-            sync_combine()
 
             if shared_output is None:
                 return routed_output.reshape(bs, slen, dim)
