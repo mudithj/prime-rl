@@ -216,8 +216,11 @@ class NemotronHPreTrainedModel(PreTrainedModelPrimeRL):
     @classmethod
     def is_prime_state_dict(cls, state_dict: dict[str, Tensor]) -> bool:
         return any(
-            "mamba." in name or "mlp.experts.w1" in name or "self_attn." in name
-            or "model.embed_tokens." in name or "model.norm." in name
+            "mamba." in name
+            or "mlp.experts.w1" in name
+            or "self_attn." in name
+            or "model.embed_tokens." in name
+            or "model.norm." in name
             for name in state_dict
         )
 

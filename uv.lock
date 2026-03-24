@@ -2554,9 +2554,6 @@ flash-attn-3 = [
 flash-attn-cute = [
     { name = "flash-attn-cute", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-mamba-ssm = [
-    { name = "mamba-ssm", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
 
 [package.dev-dependencies]
 dev = [
@@ -2591,7 +2588,6 @@ requires-dist = [
     { name = "liger-kernel", specifier = ">=0.5.10" },
     { name = "logic-env", marker = "extra == 'envs'", index = "https://hub.primeintellect.ai/primeintellect/simple/" },
     { name = "loguru", specifier = ">=0.7.3" },
-    { name = "mamba-ssm", marker = "extra == 'mamba-ssm'", specifier = ">=2.3.0" },
     { name = "math-env", marker = "extra == 'envs'", index = "https://hub.primeintellect.ai/primeintellect/simple/" },
     { name = "math-python", marker = "extra == 'envs'", index = "https://hub.primeintellect.ai/primeintellect/simple/" },
     { name = "math500", marker = "extra == 'envs'", index = "https://hub.primeintellect.ai/primeintellect/simple/" },
@@ -2620,7 +2616,7 @@ requires-dist = [
     { name = "wandb", specifier = ">=0.24.2" },
     { name = "wiki-search", marker = "extra == 'envs'", index = "https://hub.primeintellect.ai/primeintellect/simple/" },
 ]
-provides-extras = ["flash-attn", "flash-attn-3", "flash-attn-cute", "mamba-ssm", "envs"]
+provides-extras = ["flash-attn", "flash-attn-3", "flash-attn-cute", "envs"]
 
 [package.metadata.requires-dev]
 dev = [
