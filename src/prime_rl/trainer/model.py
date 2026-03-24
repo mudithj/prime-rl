@@ -211,6 +211,10 @@ def get_model(
 
     if is_vlm:
         logger.info(f"Detected vision-language model: {config.name}")
+        if config.optimization_dtype != "bfloat16" or config.reduce_dtype != "bfloat16":
+            raise ValueError(
+                "VLM models must use optimization_dtype='bfloat16' and reduce_dtype='bfloat16' to match vLLM inference."
+            )
 
     # Fallback Qwen3.5 patch detection from loaded config model_type
     if getattr(model_config, "model_type", "").startswith("qwen3_5_moe"):
