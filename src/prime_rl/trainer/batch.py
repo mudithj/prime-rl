@@ -221,6 +221,9 @@ def prepare_batch(
     if num_skipped > 0:
         get_logger().warning(f"Skipped {num_skipped}/{len(rollouts)} samples (multimodal exceeding seq_len)")
 
+    if not all_samples:
+        return [[] for _ in range(num_train_workers)]
+
     micro_batches = packed_samples_into_micro_bs(all_samples, seq_len, num_loras)
     micro_batches = [pad_micro_batch(micro_batch, pad_to_multiple_of) for micro_batch in micro_batches]
 

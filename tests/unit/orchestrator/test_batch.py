@@ -190,3 +190,26 @@ def test_prepare_sample_still_truncates_text_only():
     assert result is not None
     assert len(result.input_ids) == 3
     assert result.pixel_values is None
+
+
+def test_prepare_batch_all_skipped_returns_empty():
+    """When all samples are multimodal and exceed seq_len, prepare_batch returns empty lists."""
+    samples = [
+        TrainingSample(
+            prompt_ids=[1, 2, 3],
+            prompt_mask=[False, False, False],
+            completion_ids=[4, 5],
+            completion_mask=[True, True],
+            completion_logprobs=[-0.1, -0.2],
+            completion_temperatures=[1.0, 1.0],
+            advantage=1.0,
+            pixel_values=b"\x00" * 16,
+            pixel_values_shape=[1, 16],
+            image_grid_thw=[[1, 1, 1]],
+        )
+        for _ in range(4)
+    ]
+    # seq_len=3 < 5 tokens, all skipped
+    result = prepare_batch(samples, seq_len=3, num_train_workers=2, idxs=[0] * 4, num_loras=1)
+    assert len(result) == 2
+    assert all(len(gpu_batches) == 0 for gpu_batches in result)
