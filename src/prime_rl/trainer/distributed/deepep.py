@@ -10,6 +10,7 @@ _handle_cache: dict[int, object] = {}
 _handle_counter = 0
 _pending_combine_event: EventOverlap | None = None
 _deepep_cuda_ops_registered = False
+_deepep_cuda_lib: torch.library.Library | None = None
 
 
 def _get_next_handle_id() -> torch.Tensor:
@@ -19,21 +20,22 @@ def _get_next_handle_id() -> torch.Tensor:
 
 
 def register_deepep_cuda_ops() -> None:
-    global _deepep_cuda_ops_registered
+    global _deepep_cuda_lib, _deepep_cuda_ops_registered
     if _deepep_cuda_ops_registered:
         return
 
-    lib = torch.library.Library("deepep", "DEF")
-    lib.define(
+    # Keep the Library alive so PyTorch does not deregister the custom ops.
+    _deepep_cuda_lib = torch.library.Library("deepep", "DEF")
+    _deepep_cuda_lib.define(
         "dispatch(Tensor x, Tensor topk_idx, Tensor topk_weights, "
         "Tensor num_tokens_per_rank, Tensor num_tokens_per_rdma_rank, "
         "Tensor is_token_in_rank, Tensor num_tokens_per_expert) "
         "-> (Tensor, Tensor, Tensor, Tensor, Tensor)"
     )
-    lib.define("combine(Tensor x, Tensor handle_id) -> Tensor")
+    _deepep_cuda_lib.define("combine(Tensor x, Tensor handle_id) -> Tensor")
 
-    torch.library.impl(lib, "dispatch", "CUDA")(_dispatch_op_impl)
-    torch.library.impl(lib, "combine", "CUDA")(_combine_op_impl)
+    torch.library.impl(_deepep_cuda_lib, "dispatch", "CUDA")(_dispatch_op_impl)
+    torch.library.impl(_deepep_cuda_lib, "combine", "CUDA")(_combine_op_impl)
 
     torch.library.register_autograd("deepep::dispatch", _dispatch_backward, setup_context=_dispatch_setup_context)
     torch.library.register_autograd("deepep::combine", _combine_backward, setup_context=_combine_setup_context)
