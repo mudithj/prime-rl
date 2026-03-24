@@ -890,8 +890,6 @@ async def orchestrate(config: OrchestratorConfig):
         logger.info("Writing final checkpoint")
         ckpt_manager.save(progress, buffer, step=progress.step)
 
-    usage_reporter.close()
-
     # Close training batch sender
     training_batch_sender.close()
 

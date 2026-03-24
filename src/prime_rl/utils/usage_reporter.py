@@ -111,6 +111,7 @@ class UsageReporter:
     def close(self) -> None:
         if not self.enabled or not hasattr(self, "_loop"):
             return
+        self.enabled = False
         self._flush()
 
         async def _close():
