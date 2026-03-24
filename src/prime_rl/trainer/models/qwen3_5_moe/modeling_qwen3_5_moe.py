@@ -190,8 +190,6 @@ def torch_chunk_gated_delta_rule(
     return core_attn_out, last_recurrent_state
 
 
-
-
 class Qwen3_5MoeGatedDeltaNet(nn.Module):
     """GatedDeltaNet linear attention with Conv1d, beta/gamma gates, and chunk delta rule."""
 
@@ -296,14 +294,22 @@ class Qwen3_5MoeGatedDeltaNet(nn.Module):
         if cp_context is not None:
             cu_seqlens = cp_context.cu_seqlens
             core_attn_out, _ = self._chunk_gated_delta_rule(
-                query, key, value, g=g, beta=beta,
+                query,
+                key,
+                value,
+                g=g,
+                beta=beta,
                 use_qk_l2norm_in_kernel=True,
                 cu_seqlens=cu_seqlens,
                 cp_context=cp_context,
             )
         else:
             core_attn_out, _ = self._chunk_gated_delta_rule(
-                query, key, value, g=g, beta=beta,
+                query,
+                key,
+                value,
+                g=g,
+                beta=beta,
                 initial_state=None,
                 output_final_state=False,
                 use_qk_l2norm_in_kernel=True,
