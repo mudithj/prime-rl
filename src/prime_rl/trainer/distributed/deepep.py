@@ -1,19 +1,15 @@
 from dataclasses import dataclass
 
 import torch
+from deep_ep import Buffer
+from deep_ep.utils import EventHandle, EventOverlap
 from torch.distributed import ProcessGroup
-
-try:
-    from deep_ep import Buffer
-    from deep_ep.utils import EventHandle, EventOverlap
-except ImportError as e:
-    raise ImportError("DeepEP is required for this backend. Install from https://github.com/deepseek-ai/DeepEP.") from e
-
 
 _buffer: Buffer | None = None
 _handle_cache: dict[int, object] = {}
 _handle_counter = 0
 _pending_combine_event: EventOverlap | None = None
+_deepep_cuda_ops_registered = False
 
 
 def _get_next_handle_id() -> torch.Tensor:
@@ -22,17 +18,29 @@ def _get_next_handle_id() -> torch.Tensor:
     return torch.tensor([_handle_counter], dtype=torch.int64, device="cpu")
 
 
-_lib = torch.library.Library("deepep", "DEF")
-_lib.define(
-    "dispatch(Tensor x, Tensor topk_idx, Tensor topk_weights, "
-    "Tensor num_tokens_per_rank, Tensor num_tokens_per_rdma_rank, "
-    "Tensor is_token_in_rank, Tensor num_tokens_per_expert) "
-    "-> (Tensor, Tensor, Tensor, Tensor, Tensor)"
-)
-_lib.define("combine(Tensor x, Tensor handle_id) -> Tensor")
+def register_deepep_cuda_ops() -> None:
+    global _deepep_cuda_ops_registered
+    if _deepep_cuda_ops_registered:
+        return
+
+    lib = torch.library.Library("deepep", "DEF")
+    lib.define(
+        "dispatch(Tensor x, Tensor topk_idx, Tensor topk_weights, "
+        "Tensor num_tokens_per_rank, Tensor num_tokens_per_rdma_rank, "
+        "Tensor is_token_in_rank, Tensor num_tokens_per_expert) "
+        "-> (Tensor, Tensor, Tensor, Tensor, Tensor)"
+    )
+    lib.define("combine(Tensor x, Tensor handle_id) -> Tensor")
+
+    torch.library.impl(lib, "dispatch", "CUDA")(_dispatch_op_impl)
+    torch.library.impl(lib, "combine", "CUDA")(_combine_op_impl)
+
+    torch.library.register_autograd("deepep::dispatch", _dispatch_backward, setup_context=_dispatch_setup_context)
+    torch.library.register_autograd("deepep::combine", _combine_backward, setup_context=_combine_setup_context)
+
+    _deepep_cuda_ops_registered = True
 
 
-@torch.library.impl(_lib, "dispatch", "CUDA")
 def _dispatch_op_impl(
     x: torch.Tensor,
     topk_idx: torch.Tensor,
@@ -102,7 +110,6 @@ def _dispatch_backward(
     return grad_x, None, grad_topk_weights, None, None, None, None
 
 
-@torch.library.impl(_lib, "combine", "CUDA")
 def _combine_op_impl(x: torch.Tensor, handle_id: torch.Tensor) -> torch.Tensor:
     global _pending_combine_event
 
@@ -152,10 +159,6 @@ def _combine_backward(ctx, grad_combined):
     return grad_x, None
 
 
-torch.library.register_autograd("deepep::dispatch", _dispatch_backward, setup_context=_dispatch_setup_context)
-torch.library.register_autograd("deepep::combine", _combine_backward, setup_context=_combine_setup_context)
-
-
 @torch.compiler.disable()
 def sync_combine() -> None:
     global _pending_combine_event
@@ -165,18 +168,13 @@ def sync_combine() -> None:
         _pending_combine_event = None
 
 
-_num_sms_configured = False
-
-
 def configure_num_sms(num_sms: int) -> None:
     """Set the number of SMs for DeepEP intranode dispatch/combine kernels.
 
     Must be called before the first dispatch/combine. Also determines
     internode RDMA channel count (num_channels = num_sms / 2).
     """
-    global _num_sms_configured
     Buffer.set_num_sms(num_sms)
-    _num_sms_configured = True
 
 
 def get_hidden_bytes(x: torch.Tensor) -> int:
@@ -298,5 +296,7 @@ def combine_tokens(hidden_states: torch.Tensor, state: DispatchState) -> torch.T
     hidden_states = _unpermute_tokens(hidden_states, state.permuted_indices, state.num_recv_tokens)
     return torch.ops.deepep.combine(hidden_states, state.handle_id)
 
+
+register_deepep_cuda_ops()
 
 __all__ = ["DispatchState", "combine_tokens", "configure_num_sms", "dispatch_tokens", "sync_combine"]
