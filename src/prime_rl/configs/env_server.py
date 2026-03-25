@@ -24,7 +24,5 @@ class EnvServerConfig(BaseConfig):
     @model_validator(mode="after")
     def validate_num_workers(self):
         if self.env.num_workers == "auto":
-            raise ValueError(
-                "num_workers='auto' is not supported for standalone env servers. Set an explicit integer value."
-            )
+            self.env.num_workers = 1
         return self
