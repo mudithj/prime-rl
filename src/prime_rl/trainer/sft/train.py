@@ -149,7 +149,7 @@ def train(config: SFTConfig):
     scheduler = setup_scheduler(optimizer, config.scheduler, scheduler_steps, config.optim.lr)
 
     # Set up the renderer
-    from prime_rl.rendering import create_renderer
+    from renderers import create_renderer
 
     renderer = create_renderer(tokenizer, renderer=config.model.renderer)
     logger.info(f"Initialized renderer: {type(renderer).__name__}")

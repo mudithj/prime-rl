@@ -2533,7 +2533,7 @@ requires-dist = [
     { name = "torchtitan", git = "https://github.com/pytorch/torchtitan?rev=a1fdd7e" },
     { name = "transformers", git = "https://github.com/huggingface/transformers.git?rev=5c1c72b" },
     { name = "uvloop", specifier = ">=0.21.0" },
-    { name = "verifiers", git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=1960e77" },
+    { name = "verifiers", editable = "../verifiers" },
     { name = "vllm", specifier = ">=0.17.0" },
     { name = "wandb", specifier = ">=0.24.2" },
     { name = "wiki-search", marker = "extra == 'envs'", index = "https://hub.primeintellect.ai/primeintellect/simple/" },
@@ -3003,6 +3003,23 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/ae/fd10d6ad179910f7a1b3e0a7fde1ef8bb65e738e8ac4fd6ecff3f52252e4/regex-2025.9.1-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:1e978e5a35b293ea43f140c92a3269b6ab13fe0a2bf8a881f7ac740f5a6ade85", size = 786651, upload-time = "2025-09-01T22:08:46.079Z" },
     { url = "https://files.pythonhosted.org/packages/93/fa/b4c6dbdedc85ef4caec54c817cd5f4418dbfa2453214119f2538082bf666/regex-2025.9.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:656563e620de6908cd1c9d4f7b9e0777e3341ca7db9d4383bcaa44709c90281e", size = 788138, upload-time = "2025-09-01T22:08:51.933Z" },
 ]
+
+[[package]]
+name = "renderers"
+version = "0.1.0"
+source = { editable = "../verifiers/packages/renderers" }
+dependencies = [
+    { name = "transformers", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", marker = "extra == 'proxy'", specifier = ">=0.27.0" },
+    { name = "starlette", marker = "extra == 'proxy'", specifier = ">=0.40.0" },
+    { name = "transformers", specifier = ">=4.50.0" },
+    { name = "uvicorn", marker = "extra == 'proxy'", specifier = ">=0.30.0" },
+]
+provides-extras = ["proxy"]
 
 [[package]]
 name = "requests"
@@ -3732,12 +3749,13 @@ wheels = [
 
 [[package]]
 name = "verifiers"
-version = "0.1.11"
-source = { git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=1960e77#1960e77e9df785fb29d7ffdbdf062f5333645fa1" }
+source = { editable = "../verifiers" }
 dependencies = [
+    { name = "aiolimiter", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "anthropic", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "datasets", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "gepa", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "httpx", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "jinja2", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "math-verify", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "mcp", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -3750,11 +3768,79 @@ dependencies = [
     { name = "prime-tunnel", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pydantic", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pyzmq", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "renderers", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "requests", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "rich", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "tenacity", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "textual", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "wget", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "accelerate", marker = "extra == 'rl'", specifier = ">=1.4.0" },
+    { name = "aiohttp", marker = "extra == 'browser'", specifier = ">=3.9.0" },
+    { name = "aiolimiter", specifier = ">=1.2.1" },
+    { name = "anthropic", specifier = ">=0.78.0" },
+    { name = "datasets", specifier = ">=3.0.0,<4.7.0" },
+    { name = "deepspeed", marker = "extra == 'rl'", specifier = ">=0.17.6" },
+    { name = "flash-attn", marker = "extra == 'rl'", specifier = ">=2.8.3" },
+    { name = "gepa" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "liger-kernel", marker = "extra == 'rl'", specifier = ">=0.5.10" },
+    { name = "math-verify", specifier = ">=0.8.0" },
+    { name = "mcp", specifier = ">=1.14.1" },
+    { name = "msgpack", specifier = ">=1.1.2" },
+    { name = "nest-asyncio", specifier = ">=1.6.0" },
+    { name = "nltk", marker = "extra == 'ta'" },
+    { name = "numpy" },
+    { name = "openai", specifier = ">=1.108.1" },
+    { name = "openai-agents", specifier = ">=0.0.7" },
+    { name = "openenv-core", extras = ["core"], marker = "extra == 'openenv'", specifier = "==0.2.1" },
+    { name = "peft", marker = "extra == 'rl'" },
+    { name = "prime-sandboxes", specifier = ">=0.2.16" },
+    { name = "prime-tunnel", specifier = ">=0.1.4" },
+    { name = "pydantic", specifier = ">=2.11.9" },
+    { name = "python-dotenv", marker = "extra == 'browser'", specifier = ">=1.0.0" },
+    { name = "pyzmq", specifier = ">=27.1.0" },
+    { name = "reasoning-gym", marker = "extra == 'rg'" },
+    { name = "renderers", editable = "../verifiers/packages/renderers" },
+    { name = "requests" },
+    { name = "requests", marker = "extra == 'rl'" },
+    { name = "rich" },
+    { name = "stagehand", marker = "extra == 'browser'", specifier = ">=3.0.0" },
+    { name = "tenacity", specifier = ">=8.5.0" },
+    { name = "textarena", marker = "extra == 'ta'" },
+    { name = "textual" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
+    { name = "torch", marker = "extra == 'rl'", specifier = ">=2.8.0,<2.9.0" },
+    { name = "transformers", marker = "extra == 'rl'", specifier = ">=4.56.2" },
+    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
+    { name = "vllm", marker = "extra == 'rl'", specifier = ">=0.10.0,<0.11.0" },
+    { name = "wandb", marker = "extra == 'rl'" },
+    { name = "wget", specifier = ">=3.2" },
+]
+provides-extras = ["browser", "openenv", "rg", "rl", "ta"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "aiohttp", specifier = ">=3.9.0" },
+    { name = "ipykernel" },
+    { name = "ipywidgets" },
+    { name = "nltk" },
+    { name = "openenv-core", extras = ["core"], specifier = "==0.2.1" },
+    { name = "pre-commit" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "reasoning-gym" },
+    { name = "ruff" },
+    { name = "stagehand", specifier = ">=3.0.0" },
+    { name = "textarena" },
+    { name = "ty", specifier = ">=0.0.1a29,<0.0.22" },
 ]
 
 [[package]]

@@ -144,14 +144,13 @@ async def orchestrate(config: OrchestratorConfig):
     # Create renderer and start rendering proxy.
     # The proxy sits between verifiers and vLLM: verifiers sends standard chat
     # messages → proxy renders to tokens via Renderer → forwards to vLLM /v1/completions.
-    from prime_rl.rendering.base import create_renderer as _create_renderer
+    from renderers.base import create_renderer as _create_renderer
 
     renderer = _create_renderer(tokenizer, renderer=config.model.renderer)
     logger.info(f"Initialized {type(renderer).__name__} for {config.model.name}")
 
     import uvicorn
-
-    from prime_rl.rendering.proxy import RenderingProxy
+    from renderers.proxy import RenderingProxy
 
     proxy = RenderingProxy(renderer, vllm_base_url=rollout_client_config.base_url[0])
     proxy_port = 18100

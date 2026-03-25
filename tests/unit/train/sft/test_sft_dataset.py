@@ -2,9 +2,9 @@ from collections import Counter
 
 import pytest
 from datasets import Dataset, interleave_datasets
+from renderers import Qwen3Renderer
 from transformers import AutoTokenizer
 
-from prime_rl.rendering import Qwen3Renderer
 from prime_rl.trainer.sft.data import SFTDataset
 from prime_rl.trainer.utils import print_sample
 

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import verifiers as vf
 from PIL import Image
+from renderers.messages import deserialize_tool_calls as _deserialize_tool_calls
 
 from prime_rl.orchestrator.trajectories import (
     VLMImageCache,
@@ -16,7 +17,6 @@ from prime_rl.orchestrator.trajectories import (
     build_vlm_image_cache,
     interleave_rollout,
 )
-from prime_rl.rendering.messages import deserialize_tool_calls as _deserialize_tool_calls
 
 
 def _pixels(data: list[list[float]]) -> tuple[bytes, list[int]]:
