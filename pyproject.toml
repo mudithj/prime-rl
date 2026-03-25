@@ -76,7 +76,7 @@ disagg = [
     "deep-gemm ; platform_machine == 'x86_64'",
     "nixl",
     "nixl-cu12 ; platform_machine == 'x86_64'",
-    "vllm-router",
+    "vllm-router ; platform_machine == 'x86_64'",
 ]
 
 [dependency-groups]
