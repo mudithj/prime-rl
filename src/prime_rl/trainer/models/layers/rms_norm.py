@@ -1,10 +1,9 @@
 from dataclasses import dataclass
 
 import torch
+from quack import rmsnorm as quack_rmsnorm
 from torch import nn
 from transformers.integrations import use_kernel_forward_from_hub
-
-from quack import rmsnorm as quack_rmsnorm
 
 
 @dataclass
