@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
 
-SELECTIVE_AC_TARGETS = frozenset({"norm", "attention_sdpa", "mla_up_proj", "routed_experts"})
+SELECTIVE_AC_TARGETS = frozenset({"norm", "attn_proj", "mlp", "mla_up_proj", "routed_experts"})
 _PATCHED_METHODS_ATTR = "_prime_rl_selective_ac_patched_methods"
 
 
@@ -45,15 +45,21 @@ def _configure_norm_checkpointing(layer: nn.Module) -> None:
         checkpoint_method(module, "forward")
 
 
+def _is_dense_mlp(mlp: nn.Module) -> bool:
+    return not hasattr(mlp, "_run_routed_experts")
+
+
 def get_supported_targets(layer: nn.Module) -> frozenset[str]:
     supported_targets = {"norm"}
     self_attn = getattr(layer, "self_attn", None)
     mlp = getattr(layer, "mlp", None)
 
-    if self_attn is not None and hasattr(self_attn, "_attention_core"):
-        supported_targets.add("attention_sdpa")
+    if self_attn is not None and hasattr(self_attn, "_attn_projections"):
+        supported_targets.add("attn_proj")
     if self_attn is not None and hasattr(self_attn, "_mla_up_proj"):
         supported_targets.add("mla_up_proj")
+    if mlp is not None and _is_dense_mlp(mlp):
+        supported_targets.add("mlp")
     if mlp is not None and hasattr(mlp, "_run_routed_experts"):
         supported_targets.add("routed_experts")
 
@@ -70,10 +76,13 @@ def set_selective_activation_checkpointing(layer: nn.Module, targets: Iterable[s
     self_attn = getattr(layer, "self_attn", None)
     mlp = getattr(layer, "mlp", None)
 
-    if self_attn is not None and "attention_sdpa" in enabled_targets:
-        checkpoint_method(self_attn, "_attention_core")
+    if self_attn is not None and "attn_proj" in enabled_targets:
+        checkpoint_method(self_attn, "_attn_projections")
+        checkpoint_method(self_attn, "_output_proj")
     if self_attn is not None and "mla_up_proj" in enabled_targets:
         checkpoint_method(self_attn, "_mla_up_proj")
+    if mlp is not None and "mlp" in enabled_targets:
+        checkpoint_method(mlp, "forward")
     if mlp is not None and "routed_experts" in enabled_targets:
         checkpoint_method(mlp, "_run_routed_experts")
     if "norm" in enabled_targets:

@@ -116,13 +116,11 @@ class FlashAttention(nn.Module):
         out = self._compute_attention(query_states[0], key_states[0], value_states[0], cu_seqlens, max_seqlen)
         return out.contiguous().view(1, out.shape[0], -1)
 
-    def forward(
+    def _attn_projections(
         self,
         hidden_states: torch.Tensor,
         position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
-        cu_seqlens: torch.LongTensor | None = None,
-        max_seqlen: int | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
 
@@ -155,6 +153,20 @@ class FlashAttention(nn.Module):
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
 
+        return query_states, key_states, value_states
+
+    def _output_proj(self, attn_output: torch.Tensor) -> torch.Tensor:
+        return self.o_proj(attn_output)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor],
+        cu_seqlens: torch.LongTensor | None = None,
+        max_seqlen: int | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        query_states, key_states, value_states = self._attn_projections(hidden_states, position_embeddings)
+
         attn_output = self._attention_core(
             query_states,
             key_states,
@@ -162,9 +174,8 @@ class FlashAttention(nn.Module):
             cu_seqlens=cu_seqlens,
             max_seqlen=max_seqlen,
         )
-        attn_weights = None
-        attn_output = self.o_proj(attn_output)
-        return attn_output, attn_weights
+        attn_output = self._output_proj(attn_output)
+        return attn_output, None
 
 
 class SDPAAttention(nn.Module):
@@ -201,31 +212,17 @@ class SDPAAttention(nn.Module):
                 self.q_norm = RMSNorm(RMSNormConfig(hidden_size=self.head_dim, eps=config.rms_norm_eps))
                 self.k_norm = RMSNorm(RMSNormConfig(hidden_size=self.head_dim, eps=config.rms_norm_eps))
 
-    def _attention_core(
-        self,
-        query_states: torch.Tensor,
-        key_states: torch.Tensor,
-        value_states: torch.Tensor,
-    ) -> torch.Tensor:
-        key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=1)
-        value_states = value_states.repeat_interleave(self.num_key_value_groups, dim=1)
-        out = F.scaled_dot_product_attention(query_states, key_states, value_states, is_causal=True)
-        out = out.transpose(1, 2).contiguous()
-        return out.view(out.shape[0], out.shape[1], -1)
-
-    def forward(
+    def _attn_projections(
         self,
         hidden_states: torch.Tensor,
         position_embeddings: tuple[torch.Tensor, torch.Tensor],
-        cu_seqlens: torch.LongTensor | None = None,
-        max_seqlen: int | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
 
-        query_states: torch.Tensor = self.q_proj(hidden_states)
-        key_states: torch.Tensor = self.k_proj(hidden_states)
-        value_states: torch.Tensor = self.v_proj(hidden_states)
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
 
         if self.use_qk_norm and self.qk_norm_type == "per_layer":
             query_states = self.q_norm(query_states)
@@ -246,10 +243,35 @@ class SDPAAttention(nn.Module):
         cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
+        return query_states, key_states, value_states
+
+    def _attention_core(
+        self,
+        query_states: torch.Tensor,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+    ) -> torch.Tensor:
+        key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=1)
+        value_states = value_states.repeat_interleave(self.num_key_value_groups, dim=1)
+        out = F.scaled_dot_product_attention(query_states, key_states, value_states, is_causal=True)
+        out = out.transpose(1, 2).contiguous()
+        return out.view(out.shape[0], out.shape[1], -1)
+
+    def _output_proj(self, attn_output: torch.Tensor) -> torch.Tensor:
+        return self.o_proj(attn_output)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor],
+        cu_seqlens: torch.LongTensor | None = None,
+        max_seqlen: int | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        query_states, key_states, value_states = self._attn_projections(hidden_states, position_embeddings)
+
         attn_output = self._attention_core(query_states, key_states, value_states)
-        attn_weights = None
-        attn_output = self.o_proj(attn_output)
-        return attn_output, attn_weights
+        attn_output = self._output_proj(attn_output)
+        return attn_output, None
 
 
 ATTN_IMPL2CLASS = {
