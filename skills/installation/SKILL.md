@@ -49,38 +49,23 @@ This installs the pre-built `deep-gemm` wheel. No CUDA build step is needed.
 
 The trainer-side MoE `deepep` backend is optional and requires a local DeepEP build.
 
-Before installing DeepEP, make sure the CUDA toolkit matches `torch.version.cuda` from the project environment.
-On our H200 nodes that means using `/usr/local/cuda-12.8`, not the newer default CUDA 13.x toolkit.
-
-Example install for the `deepep` backend:
+Install using the provided script, which auto-detects CUDA toolkit and GPU architecture:
 
 ```bash
-NVSHMEM_DIR=$(
-  uv run python - <<'PY'
-import importlib.util
-spec = importlib.util.find_spec("nvidia.nvshmem")
-if not spec or not spec.submodule_search_locations:
-    raise SystemExit("nvidia.nvshmem not found in .venv")
-print(spec.submodule_search_locations[0])
-PY
-)
-
-# Some NVSHMEM wheels only ship libnvshmem_host.so.3; DeepEP expects the unversioned name.
-ln -sf "$NVSHMEM_DIR/lib/libnvshmem_host.so.3" "$NVSHMEM_DIR/lib/libnvshmem_host.so"
-
-CUDA_HOME=/usr/local/cuda-12.8 \
-CUDACXX=/usr/local/cuda-12.8/bin/nvcc \
-NVSHMEM_DIR="$NVSHMEM_DIR" \
-uv pip install --python .venv/bin/python git+https://github.com/deepseek-ai/DeepEP.git --no-build-isolation
+bash scripts/install_ep_kernels.sh
 ```
+
+The script downloads NVSHMEM, builds DeepEP from source, and places the wheel in `deps/`. It skips if DeepEP is already installed. Options:
+
+- `--workspace DIR` — build directory (default: `./ep_kernels_workspace`)
+- `--deepep-ref REF` — DeepEP commit hash (default: `73b6ea4`)
+- `--nvshmem-ver VER` — NVSHMEM version (default: `3.3.24`)
+- `--configure-drivers` — configure IBGDA drivers for multi-node (requires sudo + reboot)
 
 Verify the install:
 
 ```bash
-uv run python - <<'PY'
-import deep_ep, deep_ep_cpp
-print("deep_ep imports ok")
-PY
+uv run python -c 'import deep_ep; print(deep_ep.__file__)'
 ```
 
 ## Dev dependencies
