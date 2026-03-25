@@ -1,9 +1,22 @@
 from dataclasses import dataclass
+from functools import lru_cache
 
 import torch
-from quack import rmsnorm as quack_rmsnorm
 from torch import nn
 from transformers.integrations import use_kernel_forward_from_hub
+
+
+@lru_cache(maxsize=1)
+def _get_quack_rmsnorm():
+    """Lazy-load quack rmsnorm. Returns None if unavailable or GPU is pre-Hopper."""
+    if not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] < 9:
+        return None
+    try:
+        from quack import rmsnorm
+
+        return rmsnorm
+    except ImportError:
+        return None
 
 
 @dataclass
@@ -20,9 +33,9 @@ class RMSNorm(nn.Module):
         self.variance_epsilon = config.eps
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        if hidden_states.is_cuda:
-            out = quack_rmsnorm(hidden_states, self.weight, eps=self.variance_epsilon)
-            # quack's backward kernel requires contiguous gradients
+        quack_fn = _get_quack_rmsnorm() if hidden_states.is_cuda else None
+        if quack_fn is not None:
+            out = quack_fn(hidden_states, self.weight, eps=self.variance_epsilon)
             if out.requires_grad:
                 out.register_hook(lambda grad: grad.contiguous())
             return out
