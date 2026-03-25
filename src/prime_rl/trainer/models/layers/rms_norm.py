@@ -19,6 +19,25 @@ def _get_quack_rmsnorm():
         return None
 
 
+class _ContiguousGrad(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        return x
+
+    @staticmethod
+    def backward(ctx, grad):
+        return grad.contiguous()
+
+
+def _contiguous_grad(x: torch.Tensor) -> torch.Tensor:
+    """Identity in forward, makes gradient contiguous in backward.
+
+    Quack's RMSNorm backward kernel requires contiguous gradients (stride[-1]==1)
+    but upstream ops like attention permute can produce non-contiguous ones.
+    """
+    return _ContiguousGrad.apply(x) if x.requires_grad else x
+
+
 @dataclass
 class RMSNormConfig:
     hidden_size: int
@@ -36,9 +55,7 @@ class RMSNorm(nn.Module):
         quack_fn = _get_quack_rmsnorm() if hidden_states.is_cuda else None
         if quack_fn is not None:
             out = quack_fn(hidden_states, self.weight, eps=self.variance_epsilon)
-            if out.requires_grad:
-                out.register_hook(lambda grad: grad.contiguous())
-            return out
+            return _contiguous_grad(out)
         input_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
