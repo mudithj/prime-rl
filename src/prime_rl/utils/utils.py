@@ -130,7 +130,7 @@ def clean_exit(func: Callable) -> Callable:
                 ret = await func(*args, **kwargs)
                 wandb.finish()
                 return ret
-            except Exception as e:
+            except Exception:
                 get_logger().opt(exception=True).error(f"Fatal error in {func.__name__}")
                 wandb.finish(exit_code=1)
                 # sys.exit raises SystemExit so the finally block still runs.
@@ -150,7 +150,7 @@ def clean_exit(func: Callable) -> Callable:
                 ret = func(*args, **kwargs)
                 wandb.finish()
                 return ret
-            except Exception as e:
+            except Exception:
                 get_logger().opt(exception=True).error(f"Fatal error in {func.__name__}")
                 wandb.finish(exit_code=1)
                 # sys.exit raises SystemExit so the finally block still runs.
