@@ -11,11 +11,12 @@ Key differences from GLM-5:
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from transformers.tokenization_utils import PreTrainedTokenizer
 
-from prime_rl.rendering.base import RenderedTokens
+from prime_rl.rendering.base import ParsedResponse, RenderedTokens
 
 _TOOLS_HEADER = (
     "\n# Tools\n\n"
@@ -173,6 +174,45 @@ class GLM45Renderer:
 
     def render_ids(self, messages, *, tools=None, add_generation_prompt=False):
         return self.render(messages, tools=tools, add_generation_prompt=add_generation_prompt).token_ids
+
+    def parse_response(self, token_ids: list[int]) -> ParsedResponse:
+        text = self._tokenizer.decode(token_ids, skip_special_tokens=False)
+        for marker in ["<|endoftext|>", "<|user|>", "<|observation|>"]:
+            text = text.split(marker)[0]
+
+        reasoning_content = None
+        if "</think>" in text:
+            before, after = text.split("</think>", 1)
+            if "<think>" in before:
+                before = before.split("<think>")[-1]
+            reasoning = before.strip()
+            if reasoning:
+                reasoning_content = reasoning
+            text = after
+
+        tool_calls = None
+        if "<tool_call>" in text:
+            tool_calls = []
+            parts = text.split("<tool_call>")
+            text = parts[0].strip()
+            for tc_block in parts[1:]:
+                tc_text = tc_block.split("</tool_call>")[0]
+                name = tc_text.split("<arg_key>")[0].strip()
+                arguments = {}
+                for m in re.finditer(r"<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>", tc_text, re.DOTALL):
+                    arg_name = m.group(1).strip()
+                    arg_value = m.group(2).strip()
+                    try:
+                        arguments[arg_name] = json.loads(arg_value)
+                    except (json.JSONDecodeError, ValueError):
+                        arguments[arg_name] = arg_value
+                tool_calls.append({"function": {"name": name, "arguments": arguments}})
+
+        return ParsedResponse(
+            content=text.strip(),
+            reasoning_content=reasoning_content,
+            tool_calls=tool_calls or None,
+        )
 
     def get_stop_token_ids(self) -> list[int]:
         return [self._endoftext, self._user, self._observation]

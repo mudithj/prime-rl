@@ -1,4 +1,5 @@
 from prime_rl.rendering.base import (
+    ParsedResponse,
     RenderedTokens,
     Renderer,
     RendererPool,
@@ -16,6 +17,7 @@ __all__ = [
     "GLM45Renderer",
     "GLM5Renderer",
     "MiniMaxM2Renderer",
+    "ParsedResponse",
     "Qwen3Renderer",
     "Qwen35Renderer",
     "RenderedTokens",

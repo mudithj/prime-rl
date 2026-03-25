@@ -14,7 +14,7 @@ from typing import Any
 
 from transformers.tokenization_utils import PreTrainedTokenizer
 
-from prime_rl.rendering.base import RenderedTokens
+from prime_rl.rendering.base import ParsedResponse, RenderedTokens
 
 _TOOLS_HEADER = (
     "# Tools\n\n"
@@ -166,6 +166,36 @@ class Qwen3Renderer:
 
     def render_ids(self, messages, *, tools=None, add_generation_prompt=False):
         return self.render(messages, tools=tools, add_generation_prompt=add_generation_prompt).token_ids
+
+    def parse_response(self, token_ids: list[int]) -> ParsedResponse:
+        text = self._tokenizer.decode(token_ids, skip_special_tokens=False)
+        for marker in ["<|im_end|>", "<|endoftext|>"]:
+            text = text.split(marker)[0]
+
+        reasoning_content = None
+        if "</think>" in text:
+            before, after = text.split("</think>", 1)
+            reasoning_content = before.lstrip("<think>").strip("\n").strip()
+            text = after.strip("\n")
+
+        tool_calls = None
+        if "<tool_call>" in text:
+            tool_calls = []
+            parts = text.split("<tool_call>")
+            text = parts[0].strip()
+            for tc_block in parts[1:]:
+                tc_json = tc_block.split("</tool_call>")[0].strip()
+                try:
+                    parsed = json.loads(tc_json)
+                    tool_calls.append({"function": {"name": parsed["name"], "arguments": parsed["arguments"]}})
+                except (json.JSONDecodeError, KeyError):
+                    pass
+
+        return ParsedResponse(
+            content=text.strip(),
+            reasoning_content=reasoning_content,
+            tool_calls=tool_calls or None,
+        )
 
     def get_stop_token_ids(self) -> list[int]:
         return [self._im_end, self._endoftext]

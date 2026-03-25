@@ -10,9 +10,7 @@ import torch
 import verifiers as vf
 from PIL import Image
 
-from prime_rl.rendering.base import Renderer, build_trajectory_step
 from prime_rl.transport import TrainingSample
-from prime_rl.utils.chat_template import deserialize_tool_calls, normalize_messages, strip_message_content
 from prime_rl.utils.logger import get_logger
 
 # We use list() instead of deepcopy() for flat lists (token IDs, logprobs) - safe because
@@ -38,59 +36,6 @@ def _align_routed_experts(
     topk = len(routed_experts[0][0])
     zero_entry = [[0] * topk for _ in range(num_layers)]
     return routed_experts + [zero_entry for _ in range(deficit)]
-
-
-def _convert_tools_to_oai_format(tool_defs: list) -> list[dict[str, Any]] | None:
-    """Convert verifiers Tool objects or dicts to OAI function-calling format."""
-    if not tool_defs:
-        return None
-
-    def _get(tool: Any, key: str) -> Any:
-        if isinstance(tool, dict):
-            return tool.get(key)
-        return getattr(tool, key, None)
-
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": _get(tool, "name"),
-                "description": _get(tool, "description"),
-                "parameters": _get(tool, "parameters"),
-                **({} if _get(tool, "strict") is None else {"strict": _get(tool, "strict")}),
-            },
-        }
-        for tool in tool_defs
-    ]
-
-
-def _tokenize_step(
-    step: vf.TrajectoryStep,
-    renderer: Renderer,
-    tools: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Tokenize a trajectory step using a Renderer."""
-    prompt = normalize_messages(step.get("prompt"), default_role="user")
-    completion = normalize_messages(step.get("completion"), default_role="assistant")
-    prompt = strip_message_content(deserialize_tool_calls(prompt))
-    completion = strip_message_content(deserialize_tool_calls(completion))
-
-    return build_trajectory_step(renderer, prompt, completion, tools=tools)
-
-
-def pretokenize_rollout_trajectory(
-    output: vf.RolloutOutput,
-    renderer: Renderer,
-) -> bool:
-    """Populate missing step tokens from prompt/completion messages."""
-    tools = _convert_tools_to_oai_format(output.get("tool_defs", []))
-
-    for step in output["trajectory"]:
-        if step["tokens"] is not None:
-            continue
-        step["tokens"] = _tokenize_step(step, renderer, tools=tools)
-
-    return True
 
 
 def interleave_rollout(

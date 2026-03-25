@@ -14,12 +14,8 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 
 from prime_rl.configs.sft import DataConfig, LossMaskConfig, SFTDataConfig
 from prime_rl.rendering.base import Renderer, build_supervised_sample
+from prime_rl.rendering.messages import deserialize_tool_calls, normalize_messages, strip_message_content
 from prime_rl.trainer.world import get_world
-from prime_rl.utils.chat_template import (
-    deserialize_tool_calls,
-    normalize_messages,
-    strip_message_content,
-)
 from prime_rl.utils.logger import get_logger
 
 STACKING_DATASET_BUCKET_TIMEOUT = 10

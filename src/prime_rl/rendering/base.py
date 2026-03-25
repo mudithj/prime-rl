@@ -19,9 +19,18 @@ class RenderedTokens:
     message_indices: list[int] = field(default_factory=list)
 
 
+@dataclass
+class ParsedResponse:
+    """Result of parsing completion tokens back into a structured message."""
+
+    content: str
+    reasoning_content: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
+
+
 @runtime_checkable
 class Renderer(Protocol):
-    """Owns message → token conversion for a specific model family."""
+    """Owns message ↔ token conversion for a specific model family."""
 
     def render(
         self,
@@ -41,6 +50,10 @@ class Renderer(Protocol):
         add_generation_prompt: bool = False,
     ) -> list[int]:
         """Render messages to token IDs (without attribution metadata)."""
+        ...
+
+    def parse_response(self, token_ids: list[int]) -> ParsedResponse:
+        """Parse completion tokens back into a structured message."""
         ...
 
     def get_stop_token_ids(self) -> list[int]:

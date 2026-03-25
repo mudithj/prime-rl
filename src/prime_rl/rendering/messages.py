@@ -1,3 +1,5 @@
+"""Message utilities — normalize, deserialize tool calls, strip content."""
+
 import json
 from typing import Any
 
