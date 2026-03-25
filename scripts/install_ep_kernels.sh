@@ -29,7 +29,6 @@ DEEPEP_COMMIT_HASH="73b6ea4"
 NVSHMEM_VER="3.3.24"
 WORKSPACE="$REPO_ROOT/ep_kernels_workspace"
 CONFIGURE_DRIVERS=0
-PYTHON="$REPO_ROOT/.venv/bin/python"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -42,13 +41,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Skip if DeepEP is already installed
-if "$PYTHON" -c "import deep_ep" 2>/dev/null; then
+if python -c "import deep_ep" 2>/dev/null; then
     echo "DeepEP already installed, skipping."
     exit 0
 fi
 
 # ── Auto-detect CUDA toolkit matching torch ───────────────────────────────────
-TORCH_CUDA_VER=$("$PYTHON" -c "import torch; print(torch.version.cuda)")
+TORCH_CUDA_VER=$(python -c "import torch; print(torch.version.cuda)")
 CUDA_MAJOR_MINOR=$(echo "$TORCH_CUDA_VER" | grep -oP '^\d+\.\d+')
 CUDA_MAJOR=$(echo "$CUDA_MAJOR_MINOR" | cut -d. -f1)
 
@@ -140,7 +139,7 @@ git checkout "$DEEPEP_COMMIT_HASH"
 
 WHEEL_DIR="$REPO_ROOT/deps"
 mkdir -p "$WHEEL_DIR"
-"$PYTHON" setup.py bdist_wheel --dist-dir "$WHEEL_DIR"
+python setup.py bdist_wheel --dist-dir "$WHEEL_DIR"
 
 WHEEL=$(ls "$WHEEL_DIR"/deep_ep*.whl | head -1)
 echo ""
@@ -156,7 +155,7 @@ if [ "$CONFIGURE_DRIVERS" -eq 1 ]; then
     elif command -v dracut &> /dev/null; then
         sudo dracut --force
     else
-        echo "No supported initramfs update found." >&2
+        echo "No supported initramfs update tool found." >&2
         exit 1
     fi
     echo ""
