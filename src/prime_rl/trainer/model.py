@@ -304,14 +304,8 @@ def get_model(
         logger.debug(f"Loaded model {config.name} in {time.perf_counter() - load_model_start_time:.2f} seconds")
 
     # For VLM models, optionally freeze the vision encoder
-    if is_vlm:
-        if not config.vlm.freeze_vision_encoder and config.lora is not None:
-            logger.warning(
-                "freeze_vision_encoder=False has no effect with LoRA — "
-                "LoRA freezes all non-adapter parameters including the vision encoder."
-            )
-        if config.vlm.freeze_vision_encoder:
-            freeze_vision_encoder(model, override_attr=config.vlm.vision_encoder_attr)
+    if is_vlm and config.vlm.freeze_vision_encoder:
+        freeze_vision_encoder(model, override_attr=config.vlm.vision_encoder_attr)
 
     assert model.lm_head.weight.dtype == dtype, (
         f"LM head dtype wasnt loaded correctly {model.lm_head.weight.dtype} != {dtype}"

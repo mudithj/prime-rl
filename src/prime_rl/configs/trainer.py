@@ -729,6 +729,15 @@ class TrainerConfig(BaseConfig):
         return self
 
     @model_validator(mode="after")
+    def vlm_freeze_incompatible_with_lora(self):
+        if self.model.vlm is not None and not self.model.vlm.freeze_vision_encoder and self.model.lora is not None:
+            raise ValueError(
+                "freeze_vision_encoder=false is incompatible with LoRA. "
+                "LoRA freezes all non-adapter parameters including the vision encoder."
+            )
+        return self
+
+    @model_validator(mode="after")
     def auto_setup_bench(self):
         if self.bench is not None:
             self.max_steps = 4  # 1 Warmup + 3 Benchmark
