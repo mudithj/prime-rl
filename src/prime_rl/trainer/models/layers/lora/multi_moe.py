@@ -309,9 +309,6 @@ class MultiLoRAGroupedExperts(MultiLoRAModule):
         return state_dict
 
     def forward(self, x: torch.Tensor, num_tokens_per_expert: torch.Tensor) -> torch.Tensor:
-        if getattr(self.base_layer, "ep_comm_backend", "standard") != "standard":
-            raise ValueError("MoE LoRA adapters are not currently supported with the DeepEP backend.")
-
         # TODO: We assume theres only one adapter active in a sequence for now
         # Being able to route multi-adapter sequences efficiently requires two things that are tricky
         # 1. We need the tensor to be interleaved [(e0, a0), (e0, a1), (e1, a0), (e1, a1), ...]
@@ -334,13 +331,10 @@ class MultiLoRAGroupedExperts(MultiLoRAModule):
         base_w2 = self.base_layer.w2  # [num_experts, dim, hidden_dim]
         base_w3 = self.base_layer.w3  # [num_experts, hidden_dim, dim]
 
-        # EP handling: mirror the @expert_parallel decorator — convert DTensors
-        # to local shards and permute tokens by local expert with alignment padding.
+        # EP handling: convert DTensors to local shards.
+        # Standard EP also needs token permutation; DeepEP tokens are already dispatched.
         permuted_indices = None
         if isinstance(base_w1, DTensor):
-            from torchtitan.distributed.expert_parallel import TOKEN_GROUP_ALIGN_SIZE_M
-            from torchtitan.experiments.kernels.moe.indices import generate_permute_indices
-
             base_w1 = base_w1.to_local()
             base_w2 = base_w2.to_local()
             base_w3 = base_w3.to_local()
@@ -351,21 +345,25 @@ class MultiLoRAGroupedExperts(MultiLoRAModule):
             w3_lora_a = w3_lora_a.to_local()
             w3_lora_b = w3_lora_b.to_local()
 
-            experts_per_ep_rank = base_w1.shape[0]
-            num_ep_ranks = num_tokens_per_expert.shape[0] // experts_per_ep_rank
+            if getattr(self.base_layer, "ep_comm_backend", "standard") != "deepep":
+                from torchtitan.distributed.expert_parallel import TOKEN_GROUP_ALIGN_SIZE_M
+                from torchtitan.experiments.kernels.moe.indices import generate_permute_indices
 
-            with torch.no_grad():
-                permuted_indices, num_tokens_per_expert, _ = generate_permute_indices(
-                    num_tokens_per_expert,
-                    experts_per_ep_rank,
-                    num_ep_ranks,
-                    x.shape[0] + experts_per_ep_rank * TOKEN_GROUP_ALIGN_SIZE_M,
-                    TOKEN_GROUP_ALIGN_SIZE_M,
-                )
+                experts_per_ep_rank = base_w1.shape[0]
+                num_ep_ranks = num_tokens_per_expert.shape[0] // experts_per_ep_rank
 
-            x = torch.vstack((x, x.new_zeros((x.shape[-1]))))
-            input_shape = x.shape
-            x = x[permuted_indices, :]
+                with torch.no_grad():
+                    permuted_indices, num_tokens_per_expert, _ = generate_permute_indices(
+                        num_tokens_per_expert,
+                        experts_per_ep_rank,
+                        num_ep_ranks,
+                        x.shape[0] + experts_per_ep_rank * TOKEN_GROUP_ALIGN_SIZE_M,
+                        TOKEN_GROUP_ALIGN_SIZE_M,
+                    )
+
+                x = torch.vstack((x, x.new_zeros((x.shape[-1]))))
+                input_shape = x.shape
+                x = x[permuted_indices, :]
 
         # Compute offsets for grouped_mm
         offsets = torch.cumsum(num_tokens_per_expert, dim=0, dtype=torch.int32)
