@@ -490,9 +490,8 @@ async def orchestrate(config: OrchestratorConfig):
 
         # Schedule generating the training batch
         temperature = compute_temperature(progress.step, config.sampling, config.max_steps)
-        sampling_args = get_sampling_args(
-            config.sampling, temperature=temperature, use_token_client=config.use_token_client
-        )
+        is_vllm = config.teacher_rollout_model is None
+        sampling_args = get_sampling_args(config.sampling, temperature=temperature, is_vllm=is_vllm)
         scheduler.set_sampling_args(sampling_args)
         train_task = asyncio.create_task(scheduler.generate_batch(step=progress.step))
 
