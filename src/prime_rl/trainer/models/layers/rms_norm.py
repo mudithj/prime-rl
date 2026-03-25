@@ -4,6 +4,8 @@ import torch
 from torch import nn
 from transformers.integrations import use_kernel_forward_from_hub
 
+from quack import rmsnorm as quack_rmsnorm
+
 
 @dataclass
 class RMSNormConfig:
@@ -14,14 +16,13 @@ class RMSNormConfig:
 @use_kernel_forward_from_hub("RMSNorm")
 class RMSNorm(nn.Module):
     def __init__(self, config: RMSNormConfig) -> None:
-        """
-        Glm4MoeRMSNorm is equivalent to T5LayerNorm
-        """
         super().__init__()
         self.weight = nn.Parameter(torch.ones(config.hidden_size))
         self.variance_epsilon = config.eps
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        if hidden_states.is_cuda:
+            return quack_rmsnorm(hidden_states, self.weight, eps=self.variance_epsilon)
         input_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
