@@ -1,0 +1,57 @@
+output_dir = "/data/outputs/int5/ablations/sft/swe"
+max_steps = 72
+dist_timeout_seconds = 1800
+loss_impl = "liger_fused"
+
+[slurm]
+job_name = "sft-glm-swe"
+partition = "cluster"
+
+[deployment]
+type = "multi_node"
+num_nodes = 4
+nodes_per_fsdp_group = 4
+gpus_per_node = 4
+
+[optim]
+type = "adamw"
+lr = 1e-4
+weight_decay = 0.01
+
+[scheduler]
+type = "linear"
+warmup_steps = 10
+decay_steps = 0
+
+[model]
+name = "PrimeIntellect/Qwen3.5-35B-A3B-Base"
+impl = "custom"
+attn = "flash_attention_3"
+optim_cpu_offload = false
+cp = 2
+optimization_dtype = "bfloat16"
+reduce_dtype = "bfloat16"
+
+[model.compile]
+
+[model.ac]
+freq = 1
+
+[model.ac_offloading]
+max_inflight_activations = 1
+
+[data]
+type = "sft"
+name = "/shared/huggingface/hub/datasets--PrimeIntellect--int5-synth-swe/snapshots/b29dfa937f8ce47f4309e408d1fcab49221dcb2b"
+seq_len = 131072
+batch_size = 64
+
+[wandb]
+project = "sft-swe"
+name = "Qwen3.5-35B-A3B-Base"
+
+[log]
+level = "debug"
+
+[ckpt]
+interval = 20
