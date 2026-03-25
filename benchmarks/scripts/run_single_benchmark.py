@@ -127,8 +127,6 @@ class BenchmarkConfig(BaseConfig):
             return self
         if self.ep <= 1:
             raise ValueError("ep_comm_backend='deepep' requires ep > 1.")
-        if self.lora_rank is not None:
-            raise ValueError("ep_comm_backend='deepep' is not currently supported together with LoRA benchmarks.")
         return self
 
 
