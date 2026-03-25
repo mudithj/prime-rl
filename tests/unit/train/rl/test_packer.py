@@ -89,7 +89,7 @@ def test_packer_progress_updates_once_per_run(tmp_path: Path, monkeypatch: pytes
         dp_world_size=1,
         seq_len=4,
         pad_to_multiple_of=1,
-        tokenizer=type("FakeTokenizer", (), {"convert_tokens_to_ids": lambda self, x: None})(),
+        tokenizer=None,
         config=FileSystemTransportConfig(),
         start_step=0,
     )

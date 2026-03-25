@@ -30,6 +30,7 @@ class BasePacker(ABC):
         tokenizer: PreTrainedTokenizer,
         config: TransportConfig,
         start_step: int = 0,
+        image_token_id: int | None = None,
     ):
         self.logger = get_logger()
         self.multi_run_manager = get_multi_run_manager()
@@ -37,8 +38,7 @@ class BasePacker(ABC):
         self.seq_len = seq_len
         self.pad_to_multiple_of = pad_to_multiple_of
         self.tokenizer = tokenizer
-        image_pad_id = tokenizer.convert_tokens_to_ids("<|image_pad|>")
-        self.image_token_id = image_pad_id if isinstance(image_pad_id, int) else None
+        self.image_token_id = image_token_id
         self.receiver = setup_training_batch_receiver(config)
         shutil.rmtree(get_rollout_dir(self.multi_run_manager.output_dir), ignore_errors=True)
         self.sender: MicroBatchSender = setup_micro_batch_sender(
@@ -317,9 +317,14 @@ def setup_packer(
     tokenizer: PreTrainedTokenizer,
     transport_config: TransportConfig,
     start_step: int = 0,
+    image_token_id: int | None = None,
 ) -> BasePacker:
     multi_run_manager = get_multi_run_manager()
     if multi_run_manager.max_runs == 1:
-        return SinglePacker(dp_world_size, seq_len, pad_to_multiple_of, tokenizer, transport_config, start_step)
+        return SinglePacker(
+            dp_world_size, seq_len, pad_to_multiple_of, tokenizer, transport_config, start_step, image_token_id
+        )
     else:
-        return MultiPacker(dp_world_size, seq_len, pad_to_multiple_of, tokenizer, transport_config, start_step)
+        return MultiPacker(
+            dp_world_size, seq_len, pad_to_multiple_of, tokenizer, transport_config, start_step, image_token_id
+        )
