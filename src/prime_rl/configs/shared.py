@@ -102,6 +102,14 @@ class VLMConfig(BaseConfig):
         Field(description="Dotted attribute path to the language model module (e.g. 'model.language_model')."),
     ]
 
+    freeze_vision_encoder: Annotated[
+        bool,
+        Field(
+            description="Whether to freeze the vision encoder. When False, the vision encoder is trainable "
+            "and FSDP-sharded per-block. Has no effect with LoRA (LoRA freezes all non-adapter parameters).",
+        ),
+    ] = True
+
 
 class BaseModelConfig(BaseConfig):
     """Configures the model."""

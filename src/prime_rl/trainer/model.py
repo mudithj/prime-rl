@@ -305,12 +305,12 @@ def get_model(
 
     # For VLM models, optionally freeze the vision encoder
     if is_vlm:
-        if not config.freeze_vision_encoder and config.lora is not None:
+        if not config.vlm.freeze_vision_encoder and config.lora is not None:
             logger.warning(
                 "freeze_vision_encoder=False has no effect with LoRA — "
                 "LoRA freezes all non-adapter parameters including the vision encoder."
             )
-        if config.freeze_vision_encoder:
+        if config.vlm.freeze_vision_encoder:
             freeze_vision_encoder(model, override_attr=config.vlm.vision_encoder_attr)
 
     assert model.lm_head.weight.dtype == dtype, (
@@ -355,7 +355,7 @@ def setup_fsdp(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDim
         if vision_encoder is None:
             raise ValueError(f"VLM model {config.name} has no recognized vision encoder")
 
-        if config.freeze_vision_encoder:
+        if config.vlm.freeze_vision_encoder:
             fully_shard(vision_encoder, mesh=hsdp_mesh, **fsdp_config)
             get_logger().info("Applied FSDP to frozen vision encoder")
         else:
