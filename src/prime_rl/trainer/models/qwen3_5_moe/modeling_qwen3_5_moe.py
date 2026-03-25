@@ -51,10 +51,13 @@ except ImportError:
 
 try:
     from fla.modules import FusedRMSNormGated
+    from fla.ops.cp import FLACPContext, build_cp_context
     from fla.ops.gated_delta_rule import chunk_gated_delta_rule
 except ImportError:
     chunk_gated_delta_rule = None  # type: ignore
     FusedRMSNormGated = None  # type: ignore
+    FLACPContext = None  # type: ignore
+    build_cp_context = None  # type: ignore
 
 logger = logging.get_logger(__name__)
 
@@ -238,6 +241,20 @@ class Qwen3_5MoeGatedDeltaNet(nn.Module):
         self._causal_conv1d_fn = causal_conv1d_fn
         self._chunk_gated_delta_rule = chunk_gated_delta_rule or torch_chunk_gated_delta_rule
 
+    def _build_cp_context(self, local_seq_len: int, device: torch.device) -> "FLACPContext | None":
+        """Build fla CP context from the local (sharded) sequence length."""
+        cp_group = getattr(self, "cp_group", None)
+        if cp_group is None or build_cp_context is None:
+            return None
+        # Reconstruct global cu_seqlens: single contiguous sequence across all CP ranks
+        global_seq_len = local_seq_len * self.cp_world_size
+        global_cu_seqlens = torch.tensor([0, global_seq_len], dtype=torch.int32, device=device)
+        return build_cp_context(
+            cu_seqlens=global_cu_seqlens,
+            group=cp_group,
+            conv1d_kernel_size=self.conv_kernel_size,
+        )
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len, _ = hidden_states.shape
 
@@ -272,16 +289,31 @@ class Qwen3_5MoeGatedDeltaNet(nn.Module):
             query = query.repeat_interleave(self.num_v_heads // self.num_k_heads, dim=2)
             key = key.repeat_interleave(self.num_v_heads // self.num_k_heads, dim=2)
 
-        core_attn_out, _ = self._chunk_gated_delta_rule(
-            query,
-            key,
-            value,
-            g=g,
-            beta=beta,
-            initial_state=None,
-            output_final_state=False,
-            use_qk_l2norm_in_kernel=True,
-        )
+        # Use fla's native CP when available, otherwise fall back to PyTorch kernel
+        cp_context = self._build_cp_context(seq_len, hidden_states.device)
+        if cp_context is not None:
+            cu_seqlens = cp_context.cu_seqlens
+            core_attn_out, _ = self._chunk_gated_delta_rule(
+                query,
+                key,
+                value,
+                g=g,
+                beta=beta,
+                use_qk_l2norm_in_kernel=True,
+                cu_seqlens=cu_seqlens,
+                cp_context=cp_context,
+            )
+        else:
+            core_attn_out, _ = self._chunk_gated_delta_rule(
+                query,
+                key,
+                value,
+                g=g,
+                beta=beta,
+                initial_state=None,
+                output_final_state=False,
+                use_qk_l2norm_in_kernel=True,
+            )
 
         # Gated RMSNorm
         core_attn_out = core_attn_out.reshape(-1, self.head_v_dim)

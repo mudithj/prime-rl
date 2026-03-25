@@ -33,6 +33,7 @@ dependencies = [
     "verifiers",
     "dion",
     "tilelang>=0.1.8",
+    "flash-linear-attention",
 ]
 
 [project.scripts]
@@ -79,6 +80,9 @@ disagg = [
 ]
 
 [dependency-groups]
+mamba-ssm = [
+    "mamba-ssm>=2.3.0",
+]
 dev = [
     "ipykernel>=6.29.5",
     "ipywidgets>=8.1.7",
@@ -128,10 +132,12 @@ aime2025 = { index = "primeintellect" }
 deep-ep = { url = "https://github.com/samsja/flash-attn-builds/releases/download/v0.2/deep_ep-1.2.1+73b6ea4-cp312-cp312-linux_x86_64.whl" }
 deep-gemm = { url = "https://github.com/samsja/flash-attn-builds/releases/download/v0.2/deep_gemm-2.3.0+477618c-cp312-cp312-linux_x86_64.whl" }
 nixl-cu12 = { url = "https://github.com/samsja/flash-attn-builds/releases/download/v0.2/nixl_cu12-0.10.1-cp312-cp312-linux_x86_64.whl" }
+flash-linear-attention = { git = "https://github.com/fla-org/flash-linear-attention" }
 
 [tool.uv.extra-build-dependencies]
 flash-attn = [{ requirement = "torch", match-runtime = true }]
 flash-attn-3 = [{ requirement = "torch", match-runtime = true }]
+mamba-ssm = [{ requirement = "torch", match-runtime = true }]
 
 [tool.uv.extra-build-variables]
 flash-attn = { FLASH_ATTENTION_SKIP_CUDA_BUILD = "TRUE" }

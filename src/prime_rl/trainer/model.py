@@ -32,7 +32,7 @@ from prime_rl.trainer.models import (
     supports_custom_impl,
 )
 from prime_rl.trainer.models.layers.lm_head import inject_prime_lm_head
-from prime_rl.trainer.models.layers.moe import MoE
+from prime_rl.trainer.models.layers.moe import LatentMoE, MoE
 from prime_rl.trainer.parallel_dims import ParallelDims
 from prime_rl.trainer.weights import (
     load_state_dict,
@@ -141,8 +141,8 @@ def freeze_moe_router(model: nn.Module) -> None:
         if mlp is None:
             continue
 
-        # Custom implementation: MoE class with router attribute
-        if isinstance(mlp, MoE):
+        # Custom implementation: MoE/LatentMoE class with router attribute
+        if isinstance(mlp, (MoE, LatentMoE)):
             for param in mlp.router.parameters():
                 param.requires_grad = False
                 num_frozen += 1
@@ -169,18 +169,17 @@ def get_load_balance_stats(
     language_model = get_language_model(model)
     for transformer_block in language_model.layers:
         # This is necessary for models that have mixed dense layers
-        if not hasattr(transformer_block.mlp, "tokens_per_expert"):
+        block_mlp = getattr(transformer_block, "mlp", None)
+        if block_mlp is None or not hasattr(block_mlp, "tokens_per_expert"):
             continue
-        tokens_per_expert: torch.Tensor = transformer_block.mlp.tokens_per_expert
+        tokens_per_expert: torch.Tensor = block_mlp.tokens_per_expert
         if try_to_avoid_padding_experts:
-            tokens_per_expert = tokens_per_expert.sort(dim=0, descending=True).values[
-                transformer_block.mlp.router.top_k :
-            ]
+            tokens_per_expert = tokens_per_expert.sort(dim=0, descending=True).values[block_mlp.router.top_k :]
         balanced_load = tokens_per_expert.mean()
         max_vio = (tokens_per_expert.max() - balanced_load) / balanced_load
         per_layer_max_vio.append(max_vio.item())
         if reset_stats:
-            transformer_block.mlp.tokens_per_expert.zero_()
+            block_mlp.tokens_per_expert.zero_()
     if len(per_layer_max_vio) == 0:
         return {"max_vio": None}
     return {"max_vio": torch.tensor(per_layer_max_vio, device=torch.device("cuda"))}
@@ -211,6 +210,10 @@ def get_model(
 
     if is_vlm:
         logger.info(f"Detected vision-language model: {config.name}")
+        if config.optimization_dtype != "bfloat16" or config.reduce_dtype != "bfloat16":
+            raise ValueError(
+                "VLM models must use optimization_dtype='bfloat16' and reduce_dtype='bfloat16' to match vLLM inference."
+            )
 
     # Fallback Qwen3.5 patch detection from loaded config model_type
     if getattr(model_config, "model_type", "").startswith("qwen3_5_moe"):
@@ -249,11 +252,13 @@ def get_model(
     logger.debug(f"Loaded model config ({model_config.to_dict()})")
 
     if config.debug.num_layers is not None:
-        num_hidden_layers = min(config.debug.num_layers, model_config.num_hidden_layers)
+        # VLM configs nest num_hidden_layers under text_config
+        target_config = getattr(model_config, "text_config", model_config)
+        num_hidden_layers = min(config.debug.num_layers, target_config.num_hidden_layers)
         logger.warning(
-            f"Setting the number of layers to {config.debug.num_layers} in the model config. This means {model_config.num_hidden_layers - num_hidden_layers} layers will not be loaded."
+            f"Setting the number of layers to {config.debug.num_layers} in the model config. This means {target_config.num_hidden_layers - num_hidden_layers} layers will not be loaded."
         )
-        model_config.num_hidden_layers = num_hidden_layers
+        target_config.num_hidden_layers = num_hidden_layers
 
     # Determine the implementation to use
     custom_vlm_cls = get_custom_vlm_cls(model_config) if is_vlm else None
@@ -350,10 +355,11 @@ def setup_fsdp(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDim
     transformer_layers = language_model.layers
 
     for transformer_block in transformer_layers:
-        if parallel_dims.ep_enabled and isinstance(transformer_block.mlp, MoE):
-            fully_shard(transformer_block.mlp.experts, mesh=dp_mod_ep_mesh, **fsdp_config)
+        block_mlp = getattr(transformer_block, "mlp", None)
+        if parallel_dims.ep_enabled and block_mlp is not None and isinstance(block_mlp, (MoE, LatentMoE)):
+            fully_shard(block_mlp.experts, mesh=dp_mod_ep_mesh, **fsdp_config)
 
-            transformer_block.mlp.experts.set_gradient_divide_factor(parallel_dims.fsdp_gradient_divide_factor)
+            block_mlp.experts.set_gradient_divide_factor(parallel_dims.fsdp_gradient_divide_factor)
 
         fully_shard(
             transformer_block,
@@ -365,13 +371,15 @@ def setup_fsdp(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDim
 
     if shard_norm_and_lm_head:
         # This optimization breaks weight tying
+        embed_module = getattr(language_model, "embed_tokens", None) or getattr(language_model, "embeddings", None)
         fully_shard(
-            language_model.embed_tokens,
+            embed_module,
             mesh=hsdp_mesh,
             **fsdp_config,
         )
+        norm_module = getattr(language_model, "norm", None) or language_model.norm_f
         fully_shard(
-            [model.lm_head, language_model.norm],
+            [model.lm_head, norm_module],
             mesh=hsdp_mesh,
             mp_policy=mp_policy,
             offload_policy=offload_policy,
@@ -397,16 +405,16 @@ def setup_fsdp(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDim
     transformer_blocks = list(language_model.layers)
     next_transformer_blocks = transformer_blocks[1:] + [None]
 
-    if language_model.embed_tokens is not None and len(language_model.layers) > 0:
+    embed_module = getattr(language_model, "embed_tokens", None) or getattr(language_model, "embeddings", None)
+    if embed_module is not None and len(language_model.layers) > 0:
         if shard_norm_and_lm_head:
-            language_model.embed_tokens.set_modules_to_forward_prefetch([transformer_blocks[0]])
+            embed_module.set_modules_to_forward_prefetch([transformer_blocks[0]])
 
     for transformer_block, next_transformer_block in zip(transformer_blocks, next_transformer_blocks):
         if next_transformer_block is not None:
-            if isinstance(next_transformer_block.mlp, MoE):
-                transformer_block.set_modules_to_forward_prefetch(
-                    [next_transformer_block, next_transformer_block.mlp.experts]
-                )
+            next_mlp = getattr(next_transformer_block, "mlp", None)
+            if next_mlp is not None and isinstance(next_mlp, (MoE, LatentMoE)):
+                transformer_block.set_modules_to_forward_prefetch([next_transformer_block, next_mlp.experts])
             else:
                 transformer_block.set_modules_to_forward_prefetch([next_transformer_block])
         elif language_model.norm is not None and model.lm_head is not None:
@@ -425,15 +433,14 @@ def setup_fsdp(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDim
 
     for transformer_block, prev_transformer_block in zip(reversed_transformer_blocks, prev_transformer_blocks):
         if prev_transformer_block is not None:
-            if isinstance(prev_transformer_block.mlp, MoE):
-                transformer_block.set_modules_to_backward_prefetch(
-                    [prev_transformer_block, prev_transformer_block.mlp.experts]
-                )
+            prev_mlp = getattr(prev_transformer_block, "mlp", None)
+            if prev_mlp is not None and isinstance(prev_mlp, (MoE, LatentMoE)):
+                transformer_block.set_modules_to_backward_prefetch([prev_transformer_block, prev_mlp.experts])
             else:
                 transformer_block.set_modules_to_backward_prefetch([prev_transformer_block])
-        elif language_model.embed_tokens is not None:
+        elif embed_module is not None:
             if shard_norm_and_lm_head:
-                transformer_block.set_modules_to_backward_prefetch([language_model.embed_tokens])
+                transformer_block.set_modules_to_backward_prefetch([embed_module])
 
 
 def load_dcp_from_hf(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDims):
@@ -614,9 +621,10 @@ def apply_compile(model: nn.Module, compile_config: CompileConfig):
 def apply_ep(model: nn.Module, parallel_dims: ParallelDims):
     language_model = get_language_model(model)
     for transformer_block in language_model.layers:
-        if isinstance(transformer_block.mlp, MoE):
+        block_mlp = getattr(transformer_block, "mlp", None)
+        if block_mlp is not None and isinstance(block_mlp, (MoE, LatentMoE)):
             parallelize_module(
-                transformer_block.mlp.experts,
+                block_mlp.experts,
                 device_mesh=parallel_dims.get_mesh("ep"),
                 parallelize_plan=ExpertParallel(),
             )

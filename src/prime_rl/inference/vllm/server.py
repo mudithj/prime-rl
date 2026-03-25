@@ -120,6 +120,9 @@ MODEL_TOOL_CALL_PARSER: dict[str, str] = {
     "Qwen/Qwen3.5-122B-A10B-FP8": "qwen3_coder",
     "Qwen/Qwen3.5-397B-A17B": "qwen3_coder",
     "Qwen/Qwen3.5-397B-A17B-FP8": "qwen3_coder",
+    # NemotronH
+    "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16": "qwen3_coder",
+    "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16": "qwen3_coder",
 }
 
 

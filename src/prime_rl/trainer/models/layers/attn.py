@@ -108,7 +108,7 @@ class FlashAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        position_embeddings: tuple[torch.Tensor, torch.Tensor],
+        position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
         cu_seqlens: torch.LongTensor | None = None,
         max_seqlen: int | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
@@ -135,8 +135,9 @@ class FlashAttention(nn.Module):
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
 
-        cos, sin = position_embeddings
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        if position_embeddings is not None:
+            cos, sin = position_embeddings
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         # TODO: Can we optimize the rotary application instead of double transpose?
         query_states = query_states.transpose(1, 2)
@@ -190,7 +191,7 @@ class SDPAAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        position_embeddings: tuple[torch.Tensor, torch.Tensor],
+        position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
         cu_seqlens: torch.LongTensor | None = None,
         max_seqlen: int | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
@@ -217,8 +218,9 @@ class SDPAAttention(nn.Module):
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
 
-        cos, sin = position_embeddings
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        if position_embeddings is not None:
+            cos, sin = position_embeddings
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         # TODO: Can we optimize the rotary application instead of double transpose?
         key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=1)

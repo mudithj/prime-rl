@@ -12,7 +12,7 @@ import pynvml
 import tomli_w
 
 from prime_rl.configs.rl import RLConfig
-from prime_rl.utils.config import cli
+from prime_rl.utils.config import cli, none_to_none_str
 from prime_rl.utils.logger import setup_logger
 from prime_rl.utils.pathing import validate_output_dir
 from prime_rl.utils.process import cleanup_processes, cleanup_threads, monitor_process
@@ -42,7 +42,7 @@ def get_physical_gpu_ids() -> list[int]:
 def write_config(config: RLConfig, output_dir: Path, exclude: set[str] | None = None) -> None:
     """Write resolved config to disk, excluding launcher-only fields."""
     output_dir.mkdir(parents=True, exist_ok=True)
-    config_dict = config.model_dump(exclude=exclude, exclude_none=True, mode="json")
+    config_dict = none_to_none_str(config.model_dump(exclude=exclude, mode="json"))
     with open(output_dir / RL_TOML, "wb") as f:
         tomli_w.dump(config_dict, f)
 
@@ -52,21 +52,21 @@ def write_subconfigs(config: RLConfig, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with open(output_dir / TRAINER_TOML, "wb") as f:
-        tomli_w.dump(config.trainer.model_dump(exclude_none=True, mode="json"), f)
+        tomli_w.dump(none_to_none_str(config.trainer.model_dump(mode="json")), f)
 
     with open(output_dir / ORCHESTRATOR_TOML, "wb") as f:
-        tomli_w.dump(config.orchestrator.model_dump(exclude_none=True, mode="json"), f)
+        tomli_w.dump(none_to_none_str(config.orchestrator.model_dump(mode="json")), f)
 
     if config.inference is not None:
         # Exclude launcher-only fields that are not needed by the vLLM server
         exclude_inference = {"deployment", "slurm", "output_dir", "dry_run"}
         with open(output_dir / INFERENCE_TOML, "wb") as f:
-            tomli_w.dump(config.inference.model_dump(exclude=exclude_inference, exclude_none=True, mode="json"), f)
+            tomli_w.dump(none_to_none_str(config.inference.model_dump(mode="json")), f)
 
     teacher_inference = getattr(config, "teacher_inference", None)
     if teacher_inference is not None:
         with open(output_dir / TEACHER_INFERENCE_TOML, "wb") as f:
-            tomli_w.dump(teacher_inference.model_dump(exclude_none=True, mode="json"), f)
+            tomli_w.dump(none_to_none_str(teacher_inference.model_dump(mode="json")), f)
 
 
 def check_gpus_available(gpu_ids: list[int]) -> None:
