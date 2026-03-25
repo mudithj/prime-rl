@@ -467,24 +467,31 @@ def rl_slurm(config: RLConfig):
 
         log_dir = get_log_dir(config.output_dir)
         env_log_dir = get_log_dir(config.output_dir) / "envs"
-        env_names = [env.resolved_name for env in config.orchestrator.env]
-        if config.orchestrator.eval:
-            env_names.extend(env.resolved_name for env in config.orchestrator.eval.env)
+        train_env_names = [env.resolved_name for env in config.orchestrator.env]
+        eval_env_names = [env.resolved_name for env in config.orchestrator.eval.env] if config.orchestrator.eval else []
 
         col = 18
-        indent = " " * 2
-        env_indent = " " * 3
-        max_name = col - 2
+        i1 = " " * 2
+        i2 = " " * 3
+        i3 = " " * 4
+        max_name = col - 4
         log_lines = [
-            f"{indent}{'Trainer:':<{col}}tail -F {log_dir}/trainer.stdout",
-            f"{indent}{'Orchestrator:':<{col}}tail -F {log_dir}/orchestrator.stdout",
-            f"{indent}{'Inference:':<{col}}tail -F {log_dir}/inference.stdout",
-            f"{indent}{'All envs:':<{col}}tail -F {env_log_dir}/*/*.log",
+            f"{i1}{'Trainer:':<{col}}tail -F {log_dir}/trainer.stdout",
+            f"{i1}{'Orchestrator:':<{col}}tail -F {log_dir}/orchestrator.stdout",
+            f"{i1}{'Inference:':<{col}}tail -F {log_dir}/inference.stdout",
+            f"{i1}{'Envs:':<{col}}tail -F {env_log_dir}/*/*/*.log",
+            f"{i2}{'Train:':<{col - 1}}tail -F {env_log_dir}/train/*/*.log",
         ]
-        for name in env_names:
+        for name in train_env_names:
             short = name if len(name) <= max_name else name[: max_name - 3] + "..."
             label = f"{short}:"
-            log_lines.append(f"{env_indent}{label:<{col - 1}}tail -F {env_log_dir}/{name}/*.log")
+            log_lines.append(f"{i3}{label:<{col - 2}}tail -F {env_log_dir}/train/{name}/*.log")
+        if eval_env_names:
+            log_lines.append(f"{i2}{'Eval:':<{col - 1}}tail -F {env_log_dir}/eval/*/*.log")
+            for name in eval_env_names:
+                short = name if len(name) <= max_name else name[: max_name - 3] + "..."
+                label = f"{short}:"
+                log_lines.append(f"{i3}{label:<{col - 2}}tail -F {env_log_dir}/eval/{name}/*.log")
         log_message = "Logs:\n" + "\n".join(log_lines)
     else:
         write_subconfigs(config, config_dir)
@@ -492,23 +499,30 @@ def rl_slurm(config: RLConfig):
 
         slurm_log_dir = config.output_dir / "slurm"
         env_log_dir = get_log_dir(config.output_dir) / "envs"
-        env_names = [env.resolved_name for env in config.orchestrator.env]
-        if config.orchestrator.eval:
-            env_names.extend(env.resolved_name for env in config.orchestrator.eval.env)
+        train_env_names = [env.resolved_name for env in config.orchestrator.env]
+        eval_env_names = [env.resolved_name for env in config.orchestrator.eval.env] if config.orchestrator.eval else []
 
         col = 18
-        indent = " " * 2
-        env_indent = " " * 3
-        max_name = col - 2
-        log_lines = [f"{indent}{'Trainer:':<{col}}tail -F {slurm_log_dir}/latest_train_node_rank_0.log"]
+        i1 = " " * 2
+        i2 = " " * 3
+        i3 = " " * 4
+        max_name = col - 4
+        log_lines = [f"{i1}{'Trainer:':<{col}}tail -F {slurm_log_dir}/latest_train_node_rank_0.log"]
         if config.deployment.num_infer_nodes > 0:
-            log_lines.append(f"{indent}{'Orchestrator:':<{col}}tail -F {slurm_log_dir}/latest_orchestrator.log")
-            log_lines.append(f"{indent}{'Inference:':<{col}}tail -F {slurm_log_dir}/latest_infer_node_rank_0.log")
-        log_lines.append(f"{indent}{'All envs:':<{col}}tail -F {env_log_dir}/*/*.log")
-        for name in env_names:
+            log_lines.append(f"{i1}{'Orchestrator:':<{col}}tail -F {slurm_log_dir}/latest_orchestrator.log")
+            log_lines.append(f"{i1}{'Inference:':<{col}}tail -F {slurm_log_dir}/latest_infer_node_rank_0.log")
+        log_lines.append(f"{i1}{'Envs:':<{col}}tail -F {env_log_dir}/*/*/*.log")
+        log_lines.append(f"{i2}{'Train:':<{col - 1}}tail -F {env_log_dir}/train/*/*.log")
+        for name in train_env_names:
             short = name if len(name) <= max_name else name[: max_name - 3] + "..."
             label = f"{short}:"
-            log_lines.append(f"{env_indent}{label:<{col - 1}}tail -F {env_log_dir}/{name}/*.log")
+            log_lines.append(f"{i3}{label:<{col - 2}}tail -F {env_log_dir}/train/{name}/*.log")
+        if eval_env_names:
+            log_lines.append(f"{i2}{'Eval:':<{col - 1}}tail -F {env_log_dir}/eval/*/*.log")
+            for name in eval_env_names:
+                short = name if len(name) <= max_name else name[: max_name - 3] + "..."
+                label = f"{short}:"
+                log_lines.append(f"{i3}{label:<{col - 2}}tail -F {env_log_dir}/eval/{name}/*.log")
         log_message = "Logs:\n" + "\n".join(log_lines)
 
     script_path = config.output_dir / RL_SBATCH

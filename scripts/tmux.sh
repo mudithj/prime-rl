@@ -77,7 +77,7 @@ else
 
   # Logs: Envs (all env server and worker logs)
   tmux send-keys -t "$SESSION_NAME:RL.2" \
-    "echo \"Following env logs (tail -F; waits for rotate/create)...\"; tail -F \"${OUTPUT_DIR}/logs/envs\"/*/*.log 2>/dev/null" \
+    "echo \"Following env logs (tail -F; waits for rotate/create)...\"; tail -F \"${OUTPUT_DIR}/logs/envs\"/*/*/*.log 2>/dev/null" \
     C-m
 
   # Logs: Inference
