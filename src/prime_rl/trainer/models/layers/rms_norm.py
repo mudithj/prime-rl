@@ -21,7 +21,11 @@ class RMSNorm(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if hidden_states.is_cuda:
-            return quack_rmsnorm(hidden_states, self.weight, eps=self.variance_epsilon)
+            out = quack_rmsnorm(hidden_states, self.weight, eps=self.variance_epsilon)
+            # quack's backward kernel requires contiguous gradients
+            if out.requires_grad:
+                out.register_hook(lambda grad: grad.contiguous())
+            return out
         input_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
