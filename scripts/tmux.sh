@@ -67,22 +67,22 @@ else
   # Pane titles
   tmux select-pane -t "$SESSION_NAME:RL.0" -T "Trainer"
   tmux select-pane -t "$SESSION_NAME:RL.1" -T "Orchestrator"
-  tmux select-pane -t "$SESSION_NAME:RL.2" -T "Inference"
-  tmux select-pane -t "$SESSION_NAME:RL.3" -T "Envs"
+  tmux select-pane -t "$SESSION_NAME:RL.2" -T "Envs"
+  tmux select-pane -t "$SESSION_NAME:RL.3" -T "Inference"
 
   # Logs: Orchestrator
   tmux send-keys -t "$SESSION_NAME:RL.1" \
     "echo \"Following orchestrator.stdout (tail -F; waits for rotate/create)...\"; tail -F \"${OUTPUT_DIR}/logs/orchestrator.stdout\" 2>/dev/null" \
     C-m
 
-  # Logs: Inference
+  # Logs: Envs (all env server and worker logs)
   tmux send-keys -t "$SESSION_NAME:RL.2" \
-    "echo \"Following inference.stdout (tail -F; waits for rotate/create)...\"; tail -F \"${OUTPUT_DIR}/logs/inference.stdout\" 2>/dev/null" \
+    "echo \"Following env logs (tail -F; waits for rotate/create)...\"; tail -F \"${OUTPUT_DIR}/run_default/logs/envs\"/*/*.log 2>/dev/null" \
     C-m
 
-  # Logs: Envs (all env server and worker logs)
+  # Logs: Inference
   tmux send-keys -t "$SESSION_NAME:RL.3" \
-    "echo \"Following env logs (tail -F; waits for rotate/create)...\"; tail -F \"${OUTPUT_DIR}/run_default/logs/envs\"/*/*.log 2>/dev/null" \
+    "echo \"Following inference.stdout (tail -F; waits for rotate/create)...\"; tail -F \"${OUTPUT_DIR}/logs/inference.stdout\" 2>/dev/null" \
     C-m
 
   # Window 2: Monitor

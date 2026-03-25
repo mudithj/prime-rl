@@ -472,13 +472,14 @@ def rl_slurm(config: RLConfig):
             env_names.extend(env.resolved_name for env in config.orchestrator.eval.env)
 
         log_lines = [
-            f"  Trainer:       tail -F {log_dir}/trainer.stdout",
-            f"  Orchestrator:  tail -F {log_dir}/orchestrator.stdout",
-            f"  Inference:     tail -F {log_dir}/inference.stdout",
-            f"  All envs:      tail -F {env_log_dir}/*/*.log",
+            f"  Trainer:        tail -F {log_dir}/trainer.stdout",
+            f"  Orchestrator:   tail -F {log_dir}/orchestrator.stdout",
+            f"  Inference:      tail -F {log_dir}/inference.stdout",
+            f"  All envs:       tail -F {env_log_dir}/*/*.log",
         ]
         for name in env_names:
-            log_lines.append(f"  Env {name}:  tail -F {env_log_dir}/{name}/*.log")
+            label = f"{name}:"
+            log_lines.append(f"   {label:<15}tail -F {env_log_dir}/{name}/*.log")
         log_message = "Logs:\n" + "\n".join(log_lines)
     else:
         write_subconfigs(config, config_dir)
@@ -490,13 +491,14 @@ def rl_slurm(config: RLConfig):
         if config.orchestrator.eval:
             env_names.extend(env.resolved_name for env in config.orchestrator.eval.env)
 
-        log_lines = [f"  Trainer:       tail -F {slurm_log_dir}/latest_train_node_rank_0.log"]
+        log_lines = [f"  Trainer:        tail -F {slurm_log_dir}/latest_train_node_rank_0.log"]
         if config.deployment.num_infer_nodes > 0:
-            log_lines.append(f"  Orchestrator:  tail -F {slurm_log_dir}/latest_orchestrator.log")
-            log_lines.append(f"  Inference:     tail -F {slurm_log_dir}/latest_infer_node_rank_0.log")
-        log_lines.append(f"  All envs:      tail -F {env_log_dir}/*/*.log")
+            log_lines.append(f"  Orchestrator:   tail -F {slurm_log_dir}/latest_orchestrator.log")
+            log_lines.append(f"  Inference:      tail -F {slurm_log_dir}/latest_infer_node_rank_0.log")
+        log_lines.append(f"  All envs:       tail -F {env_log_dir}/*/*.log")
         for name in env_names:
-            log_lines.append(f"  Env {name}:  tail -F {env_log_dir}/{name}/*.log")
+            label = f"{name}:"
+            log_lines.append(f"   {label:<15}tail -F {env_log_dir}/{name}/*.log")
         log_message = "Logs:\n" + "\n".join(log_lines)
 
     script_path = config.output_dir / RL_SBATCH
