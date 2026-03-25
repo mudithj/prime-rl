@@ -39,6 +39,8 @@ To add permanent support for a new model family, add an entry to `VLM_REGISTRY` 
 
 - **Multimodal samples that exceed `seq_len` are skipped**: Truncating a multimodal sample would break the alignment between image tokens and `pixel_values`. Instead of producing corrupt training data, such samples are dropped with a warning. Ensure `seq_len` covers your longest VLM samples or reduce rollout length.
 
+- **Keep `max_model_len` large for VLMs**: vLLM's tokenizer left-truncates prompts that exceed `max_model_len - max_tokens`, which can silently chop image placeholder tokens from early images while `pixel_values` remain intact. This causes a fatal mismatch at training time. With the model's default context length (e.g. 32768) this never happens, but if you reduce `max_model_len` for memory reasons, make sure it's large enough to fit your longest expanded VLM prompt.
+
 - **Optimization dtype must be bfloat16**: Set `optimization_dtype = "bfloat16"` and `reduce_dtype = "bfloat16"` in your trainer config.
 
 - **Higher KL mismatch with multi-image inputs**: VLM training exhibits higher KL mismatch compared to text-only, especially with multiple images.

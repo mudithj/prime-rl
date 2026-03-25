@@ -199,8 +199,6 @@ def train(config: TrainerConfig):
     if config.data.fake:
         dataloader = FakeDataLoader(config.data.fake, config.model.seq_len, parallel_dims.get_mesh("dp").size())
     else:
-        from prime_rl.utils.vlm import get_image_token_id
-
         dataloader = DataLoader(
             config.output_dir,
             progress.step,
@@ -209,7 +207,6 @@ def train(config: TrainerConfig):
             config.model.cp,
             tokenizer,
             config.rollout_transport,
-            image_token_id=get_image_token_id(tokenizer, model.config),
         )
 
     logger.info(f"Starting training loop (max_steps={config.max_steps or 'infinite'})")
