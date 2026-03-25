@@ -9,6 +9,8 @@ from torch import Tensor
 
 from prime_rl.utils.logger import get_logger
 
+FUSED_CE_IGNORE_INDEX = -100
+
 
 class PrimeLmOutput(TypedDict, total=False):
     """Output from LM head - a TypedDict so pytree can find tensors for FSDP2 hooks."""
@@ -79,7 +81,7 @@ class FusedCrossEntropyOutputLinear(torch.nn.Linear):
     projection with the cross-entropy loss computation.
     """
 
-    IGNORE_INDEX = -100
+    IGNORE_INDEX = FUSED_CE_IGNORE_INDEX
 
     def __init__(self, in_features: int, out_features: int, softcap: float | None = None):
         super().__init__(in_features, out_features, bias=False)
@@ -113,7 +115,7 @@ class QuackFusedCrossEntropyOutputLinear(torch.nn.Linear):
     CuTe DSL kernels for CE and GEMM.
     """
 
-    IGNORE_INDEX = -100
+    IGNORE_INDEX = FUSED_CE_IGNORE_INDEX
 
     def __init__(self, in_features: int, out_features: int, chunk_size: int = 4096):
         super().__init__(in_features, out_features, bias=False)
@@ -299,11 +301,17 @@ def inject_prime_lm_head(
 
     # Check for Gemma-style softcapping - dispatch to specialized implementation
     final_logit_softcapping = getattr(model.config, "final_logit_softcapping", None)
-    if final_logit_softcapping and not fused_cross_entropy:
-        from prime_rl.trainer.models.layers.lm_head_gemma import inject_gemma_lm_head
+    if final_logit_softcapping:
+        if fused_cross_entropy == "quack":
+            raise ValueError(
+                "quack_fused does not support Gemma logit softcapping. "
+                "Use loss_impl='liger_fused' or loss_impl='torch' instead."
+            )
+        if not fused_cross_entropy:
+            from prime_rl.trainer.models.layers.lm_head_gemma import inject_gemma_lm_head
 
-        inject_gemma_lm_head(model, chunk_size, final_logit_softcapping)
-        return
+            inject_gemma_lm_head(model, chunk_size, final_logit_softcapping)
+            return
 
     # Replace the lm_head with the appropriate wrapper
     old_lm_head = model.lm_head
