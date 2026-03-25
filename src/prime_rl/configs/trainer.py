@@ -338,8 +338,8 @@ class ModelConfig(BaseModelConfig):
 
     @model_validator(mode="after")
     def selective_ac_only_with_custom_impl(self):
-        if self.ac is not None and self.ac.mode == "selective" and self.impl != "custom":
-            raise ValueError("Selective activation checkpointing requires model.impl='custom'")
+        if self.ac is not None and self.ac.mode == "selective" and self.impl not in ("custom", "auto"):
+            raise ValueError("Selective activation checkpointing requires model.impl='custom' or 'auto'")
         return self
 
     @model_validator(mode="after")

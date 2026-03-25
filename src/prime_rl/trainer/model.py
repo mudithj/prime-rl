@@ -682,7 +682,7 @@ def _move_buffers_to_cuda(model: nn.Module, config: ModelConfig) -> None:
 
 def _reset_runtime_moe_buffers(model: nn.Module) -> None:
     for module in model.modules():
-        if isinstance(module, MoE) and module.tokens_per_expert.device.type != "meta":
+        if isinstance(module, (MoE, LatentMoE)) and module.tokens_per_expert.device.type != "meta":
             module.tokens_per_expert.zero_()
 
 
