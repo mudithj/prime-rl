@@ -46,7 +46,7 @@ def _configure_norm_checkpointing(layer: nn.Module) -> None:
 
 
 def _is_dense_mlp(mlp: nn.Module) -> bool:
-    return not hasattr(mlp, "_run_routed_experts")
+    return not hasattr(mlp, "_run_routed_experts") and not hasattr(mlp, "tokens_per_expert")
 
 
 def get_supported_targets(layer: nn.Module) -> frozenset[str]:
