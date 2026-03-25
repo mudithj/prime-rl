@@ -6,10 +6,10 @@ from functools import partial
 from pathlib import Path
 from typing import cast
 
-import verifiers as vf
 from datasets import Dataset
 from verifiers.utils.save_utils import make_serializable
 
+import verifiers as vf
 from prime_rl.configs.orchestrator import BufferConfig
 from prime_rl.utils.logger import get_logger
 from prime_rl.utils.utils import format_num, mean, mean_normalize

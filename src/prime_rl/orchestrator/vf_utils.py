@@ -5,11 +5,11 @@ from collections.abc import Awaitable, Callable
 from itertools import cycle
 from typing import Any
 
-import verifiers as vf
 from verifiers.envs.environment import EnvClient
 from verifiers.utils.worker_utils import get_free_port_pair
 from verifiers.workers import ZMQEnvClient, ZMQEnvServer
 
+import verifiers as vf
 from prime_rl.utils.logger import InterceptHandler, ProgressTracker, get_logger
 
 DEFAULT_RETRIES = 0

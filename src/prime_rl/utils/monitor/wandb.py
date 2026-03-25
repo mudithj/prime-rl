@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import verifiers as vf
 import wandb
 from transformers.tokenization_utils import PreTrainedTokenizer
 from wandb.errors import CommError
 
+import verifiers as vf
 from prime_rl.configs.shared import WandbConfig, WandbWithExtrasConfig
 from prime_rl.utils.config import BaseConfig
 from prime_rl.utils.logger import get_logger

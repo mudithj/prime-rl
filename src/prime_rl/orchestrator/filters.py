@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import verifiers as vf
-
 from prime_rl.configs.orchestrator import FilterConfig
 from prime_rl.utils.logger import get_logger
 

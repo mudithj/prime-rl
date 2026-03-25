@@ -195,7 +195,6 @@ def _configure_moe_ep_backend(model: nn.Module, config: ModelConfig) -> None:
         transformer_block.mlp.set_ep_comm_backend(backend)
 
 
-
 def get_load_balance_stats(
     model: nn.Module, reset_stats: bool = True, try_to_avoid_padding_experts: bool = True
 ) -> dict[str, Tensor | None]:

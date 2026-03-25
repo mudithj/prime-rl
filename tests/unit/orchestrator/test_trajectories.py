@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-import verifiers as vf
 from PIL import Image
 
+import verifiers as vf
 from prime_rl.orchestrator.trajectories import (
     VLMImageCache,
     _align_routed_experts,

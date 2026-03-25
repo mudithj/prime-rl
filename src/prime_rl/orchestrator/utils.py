@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, AsyncContextManager
 
 import pandas as pd
-import verifiers as vf
 from openai.types.chat.chat_completion import ChatCompletion, Choice
 from openai.types.completion_usage import CompletionUsage
 from rich.console import Console
@@ -13,6 +12,7 @@ from rich.table import Table
 from verifiers.utils.async_utils import maybe_semaphore
 from verifiers.utils.client_utils import setup_openai_client
 
+import verifiers as vf
 from prime_rl.configs.orchestrator import OrchestratorConfig, SamplingConfig
 from prime_rl.transport import TrainingSample
 from prime_rl.utils.utils import (

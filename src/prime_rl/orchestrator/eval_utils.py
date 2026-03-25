@@ -4,8 +4,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import verifiers as vf
 
+import verifiers as vf
 from prime_rl.configs.orchestrator import EvalSamplingConfig
 from prime_rl.orchestrator.vf_utils import evaluate, get_completion_len
 from prime_rl.utils.logger import get_logger

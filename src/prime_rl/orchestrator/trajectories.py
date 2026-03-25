@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import verifiers as vf
 from PIL import Image
 from transformers.tokenization_utils import PreTrainedTokenizer
 
+import verifiers as vf
 from prime_rl.transport import TrainingSample
 from prime_rl.utils.chat_template import (
     common_prefix_len,

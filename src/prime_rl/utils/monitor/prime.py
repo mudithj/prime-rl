@@ -13,10 +13,10 @@ from urllib.parse import urlparse
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
-import verifiers as vf
 from prime_cli.core.config import Config as PrimeConfig
 from transformers.tokenization_utils import PreTrainedTokenizer
 
+import verifiers as vf
 from prime_rl.configs.shared import PrimeMonitorConfig
 from prime_rl.utils.config import BaseConfig
 from prime_rl.utils.logger import get_logger

@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import httpx
-import verifiers as vf
 from httpx import AsyncClient
 from openai import NotFoundError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+import verifiers as vf
 from prime_rl.configs.shared import ClientConfig
 from prime_rl.utils.logger import get_logger
 
