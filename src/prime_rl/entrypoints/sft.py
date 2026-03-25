@@ -9,7 +9,7 @@ from threading import Event, Thread
 import tomli_w
 
 from prime_rl.configs.sft import SFTConfig
-from prime_rl.utils.config import cli, none_to_none_str
+from prime_rl.utils.config import cli
 from prime_rl.utils.logger import setup_logger
 from prime_rl.utils.pathing import get_config_dir, get_log_dir, validate_output_dir
 from prime_rl.utils.process import cleanup_processes, cleanup_threads, monitor_process
@@ -22,7 +22,7 @@ SFT_SBATCH = "sft.sbatch"
 def write_config(config: SFTConfig, config_path: Path, exclude: set[str] | None = None) -> None:
     """Write resolved config to disk, excluding launcher-only fields."""
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_dict = none_to_none_str(config.model_dump(exclude=exclude, mode="json"))
+    config_dict = config.model_dump(exclude=exclude, exclude_none=True, mode="json")
     with open(config_path, "wb") as f:
         tomli_w.dump(config_dict, f)
 

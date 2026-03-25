@@ -3,6 +3,7 @@ from pydantic_config import BaseConfig as BaseConfig  # noqa: F401
 from pydantic_config import cli  # noqa: F401
 
 
+<<<<<<< HEAD
 def _convert_none(value):
     """Recursively convert None to ``"None"`` strings for TOML serialization."""
     if value is None:
@@ -23,6 +24,8 @@ def none_to_none_str(data: dict) -> dict:
     return _convert_none(data)
 
 
+=======
+>>>>>>> parent of a25b3e7a1 (Enable none in config (#2093))
 def get_all_fields(model: BaseModel | type) -> list[str]:
     if isinstance(model, BaseModel):
         model_cls = model.__class__

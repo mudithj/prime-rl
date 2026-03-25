@@ -5,7 +5,7 @@ from pathlib import Path
 import tomli_w
 
 from prime_rl.configs.inference import InferenceConfig
-from prime_rl.utils.config import cli, none_to_none_str
+from prime_rl.utils.config import cli
 from prime_rl.utils.logger import setup_logger
 from prime_rl.utils.pathing import get_config_dir
 
@@ -18,7 +18,7 @@ def write_config(config: InferenceConfig, output_dir: Path, exclude: set[str] | 
     output_dir.mkdir(parents=True, exist_ok=True)
     config_path = output_dir / INFERENCE_TOML
     with open(config_path, "wb") as f:
-        tomli_w.dump(none_to_none_str(config.model_dump(exclude=exclude, mode="json")), f)
+        tomli_w.dump(config.model_dump(exclude=exclude, exclude_none=True, mode="json"), f)
     return config_path
 
 
