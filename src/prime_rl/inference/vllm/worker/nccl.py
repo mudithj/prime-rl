@@ -13,6 +13,7 @@ from prime_rl.inference.vllm.worker.weight_transfer import (
     postprocess_weights_checkpoint,
     postprocess_weights_kernel,
 )
+from prime_rl.utils.tensor_indexing import get_index_dtype_for_numel
 
 # This is to get type hints for the Worker class but not actually extend it at runtime as this is required by vLLM worker extension
 if TYPE_CHECKING:
@@ -129,7 +130,8 @@ class NCCLWeightBroadcastReceiver:
             buffer = self._buffers[(layer_idx, group_idx)]
 
             if num_changed > 0:
-                indices = torch.empty(num_changed, dtype=torch.int32, device=self.communicator.device)
+                index_dtype = get_index_dtype_for_numel(group_elements)
+                indices = torch.empty(num_changed, dtype=index_dtype, device=self.communicator.device)
                 self.communicator.broadcast(indices, src=0)
                 values = torch.empty(num_changed, dtype=dtype, device=self.communicator.device)
                 self.communicator.broadcast(values, src=0)

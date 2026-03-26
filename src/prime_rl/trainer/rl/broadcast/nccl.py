@@ -19,6 +19,7 @@ from prime_rl.trainer.utils import get_world
 from prime_rl.trainer.weights import get_max_layer_num
 from prime_rl.utils.logger import get_logger
 from prime_rl.utils.pathing import sync_wait_for_path
+from prime_rl.utils.tensor_indexing import get_index_dtype_for_numel
 from prime_rl.utils.utils import get_broadcast_dir, get_step_path
 from prime_rl.utils.vlm import get_layer_prefix
 
@@ -94,25 +95,35 @@ def _broadcast_delta(
     state_dict: dict[str, Tensor],
     prev_cache: dict[int, Tensor],
     communicator: PyNcclCommunicator,
-) -> tuple[dict[int, Tensor], int, int]:
-    """Broadcast delta-compressed state dict. Returns (new_cache, total_elements, total_changed)."""
+) -> tuple[dict[int, Tensor], int, int, int, int]:
+    """Broadcast delta-compressed state dict.
+
+    Returns:
+        Tuple of (new_cache, total_elements, total_changed, full_bytes, delta_bytes).
+    """
     dtype_groups = _build_dtype_groups(state_dict)
     _broadcast_metadata(dtype_groups, communicator)
 
     new_cache: dict[int, Tensor] = {}
     total_elements = 0
     total_changed = 0
+    total_full_bytes = 0
+    total_delta_bytes = 0
 
     for group_idx, (dtype, items) in enumerate(dtype_groups.items()):
         current_concat = torch.cat([value.flatten() for _, value in items])
         prev_concat = prev_cache[group_idx].to(current_concat.device)
+        index_dtype = get_index_dtype_for_numel(current_concat.numel())
 
         changed_mask = _int_view(current_concat) != _int_view(prev_concat)
-        indices = changed_mask.nonzero(as_tuple=True)[0].to(torch.int32)
+        indices = changed_mask.nonzero(as_tuple=True)[0].to(index_dtype)
         values = current_concat[indices.long()]
 
         total_elements += current_concat.numel()
         total_changed += indices.numel()
+        total_full_bytes += current_concat.numel() * current_concat.element_size()
+        total_delta_bytes += values.numel() * values.element_size()
+        total_delta_bytes += indices.numel() * indices.element_size()
 
         num_changed_tensor = torch.tensor([indices.numel()], dtype=torch.long).cuda()
         communicator.broadcast(num_changed_tensor, src=0)
@@ -123,7 +134,7 @@ def _broadcast_delta(
         new_cache[group_idx] = current_concat.cpu()
         del current_concat, prev_concat, changed_mask, indices, values
 
-    return new_cache, total_elements, total_changed
+    return new_cache, total_elements, total_changed, total_full_bytes, total_delta_bytes
 
 
 def filter_state_dict_by_layers(
@@ -236,13 +247,17 @@ class NCCLWeightBroadcastSender:
 
         total_elements = 0
         total_changed = 0
+        total_full_bytes = 0
+        total_delta_bytes = 0
 
         for seq_idx, cpu_dict in enumerate(gathered):
             gpu_dict = {k: v.cuda() for k, v in cpu_dict.items()}
             if self.delta_compression:
-                n_elem, n_changed = self._send_delta_aware(gpu_dict, seq_idx)
+                n_elem, n_changed, full_bytes, delta_bytes = self._send_delta_aware(gpu_dict, seq_idx)
                 total_elements += n_elem
                 total_changed += n_changed
+                total_full_bytes += full_bytes
+                total_delta_bytes += delta_bytes
             else:
                 broadcast_state_dict(gpu_dict, self.communicator)
             del gpu_dict
@@ -251,26 +266,31 @@ class NCCLWeightBroadcastSender:
         torch.cuda.empty_cache()
 
         if self.delta_compression and total_elements > 0:
-            self._log_delta_stats(step, total_elements, total_changed)
+            self._log_delta_stats(step, total_elements, total_changed, total_full_bytes, total_delta_bytes)
 
-    def _send_delta_aware(self, state_dict: dict[str, Tensor], seq_idx: int) -> tuple[int, int]:
-        """Send full (first time) or delta (subsequent). Returns (total_elements, changed_elements)."""
+    def _send_delta_aware(self, state_dict: dict[str, Tensor], seq_idx: int) -> tuple[int, int, int, int]:
+        """Send full (first time) or delta (subsequent).
+
+        Returns:
+            Tuple of (total_elements, changed_elements, full_bytes, delta_bytes).
+        """
         prev = self._layer_cache.get(seq_idx)
         if prev is None:
             broadcast_integer(BROADCAST_MODE_FULL, self.communicator)
             self._layer_cache[seq_idx] = broadcast_state_dict(state_dict, self.communicator, cache=True)
-            return 0, 0
+            return 0, 0, 0, 0
 
         broadcast_integer(BROADCAST_MODE_DELTA, self.communicator)
-        new_cache, n_total, n_changed = _broadcast_delta(state_dict, prev, self.communicator)
+        new_cache, n_total, n_changed, full_bytes, delta_bytes = _broadcast_delta(state_dict, prev, self.communicator)
         self._layer_cache[seq_idx] = new_cache
-        return n_total, n_changed
+        return n_total, n_changed, full_bytes, delta_bytes
 
-    def _log_delta_stats(self, step: int, total_elements: int, total_changed: int) -> None:
+    def _log_delta_stats(
+        self, step: int, total_elements: int, total_changed: int, total_full_bytes: int, total_delta_bytes: int
+    ) -> None:
         sparsity = 1.0 - total_changed / total_elements
-        elem_bytes = 2
-        full_gb = total_elements * elem_bytes / 1e9
-        delta_gb = total_changed * (elem_bytes + 4) / 1e9
+        full_gb = total_full_bytes / 1e9
+        delta_gb = total_delta_bytes / 1e9
         self.logger.info(
             f"Delta broadcast step {step}: {total_changed:,}/{total_elements:,} elements changed "
             f"({sparsity:.2%} sparsity, ~{delta_gb:.3f} GB delta vs ~{full_gb:.3f} GB full)"
