@@ -14,7 +14,7 @@ Global renames:
   - HF: backbone.embeddings.weight <-> PrimeRL: model.embed_tokens.weight
   - HF: backbone.norm_f.weight <-> PrimeRL: model.norm.weight
   - HF uses "backbone." prefix, PrimeRL uses "model." prefix
-  - HF mtp.* keys (multi-token prediction) are dropped during conversion
+  - HF mtp.* keys (multi-token prediction) are converted to model.mtp.* format
 """
 
 import torch
@@ -257,7 +257,9 @@ def convert_hf_to_prime(state_dict: dict[str, Tensor], layers_block_type: list[s
     # Handle backbone.* -> model.* prefix (HF NemotronH uses "backbone" instead of "model")
     _rename_keys(state_dict, "backbone.", "model.")
 
-    # Convert or drop MTP keys
+    # Always convert MTP keys so the cached snapshot works for both MTP-enabled
+    # and non-MTP runs.  Unused keys are ignored by dcp_load (it only loads keys
+    # present in the model's state_dict).
     has_mtp = any(k.startswith("mtp.") for k in state_dict)
     if has_mtp:
         _convert_mtp_hf_to_prime(state_dict)

@@ -235,7 +235,7 @@ def train(config: SFTConfig):
         if mtp_token_loss is not None and mtp_config is not None:
             from prime_rl.trainer.mtp import compute_mtp_mask
 
-            mtp_mask = compute_mtp_mask(loss_mask, num_steps=out.get("mtp_num_steps", 1))
+            mtp_mask = compute_mtp_mask(loss_mask, num_steps=out.get("mtp_num_steps", 1), position_ids=position_ids)
             mtp_count = mtp_mask.sum().clamp(min=1)
             mtp_loss_sum = (mtp_token_loss * mtp_mask).sum()
             loss_sum = loss_sum + mtp_config.loss_scaling_factor * mtp_loss_sum * (token_count / mtp_count)

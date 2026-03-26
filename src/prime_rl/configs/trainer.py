@@ -141,25 +141,6 @@ class LoRAConfig(BaseConfig):
     ] = []
 
 
-class MTPConfig(BaseConfig):
-    """Configures Multi-Token Prediction (MTP) auxiliary training.
-
-    When enabled, an auxiliary CE loss is computed on the model's MTP layers (e.g. Nemotron-H,
-    DeepSeek-V3) alongside the main training objective. The MTP loss only updates the MTP
-    layer parameters; backbone, embedding, and LM head weights are detached.
-    """
-
-    loss_scaling_factor: Annotated[
-        float,
-        Field(ge=0, description="Scaling factor for the MTP auxiliary loss added to the main loss."),
-    ] = 0.1
-
-    lm_head_chunk_size: Annotated[
-        int,
-        Field(ge=1, description="Sequence-dimension chunk size for MTP logit computation to limit peak memory."),
-    ] = 512
-
-
 class DebugModelConfig(BaseConfig):
     """Debugging feature around model and distributed training."""
 
@@ -290,14 +271,6 @@ class ModelConfig(BaseModelConfig):
         LoRAConfig | None,
         Field(
             description="Whether to apply LoRA to the model. If None, will not apply LoRA.",
-        ),
-    ] = None
-
-    mtp: Annotated[
-        MTPConfig | None,
-        Field(
-            description="Multi-Token Prediction auxiliary training config. When set, trains the model's MTP layers "
-            "with an auxiliary CE loss. The model must be a PreTrainedModelPrimeRL with MTP support.",
         ),
     ] = None
 

@@ -31,11 +31,6 @@ from prime_rl.trainer.models import (
     get_custom_vlm_cls,
     supports_custom_impl,
 )
-from prime_rl.trainer.models.layers.checkpointing import (
-    get_supported_targets,
-    set_selective_activation_checkpointing,
-    supports_selective_activation_checkpointing,
-)
 from prime_rl.trainer.models.layers.lm_head import inject_prime_lm_head
 from prime_rl.trainer.models.layers.moe import LatentMoE, MoE
 from prime_rl.trainer.parallel_dims import ParallelDims
@@ -378,14 +373,18 @@ def setup_fsdp(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDim
             **fsdp_config,
         )
 
-    # FSDP-wrap MTP layers individually (if present) so their parameters are
-    # sharded/unsharded independently rather than lumped into the root group.
-    # Use `model` (the ForCausalLM wrapper) so the mtp_layers property resolves
-    # correctly for models that store MTP under a container (e.g. model.mtp.layers).
+    # FSDP-wrap MTP layers individually so their parameters are sharded/unsharded
+    # independently.  For models with a shared MTP container (Nemotron-H, Qwen3.5)
+    # that holds fusion modules (enorm, hnorm, eh_proj, norm) alongside the per-step
+    # blocks, also wrap the container so the shared components get their own FSDP group
+    # rather than falling into the root group.
     mtp_layers = getattr(model, "mtp_layers", None)
     if mtp_layers is not None:
         for mtp_block in mtp_layers:
             fully_shard(mtp_block, mesh=hsdp_mesh, **fsdp_config)
+        mtp_container = getattr(language_model, "mtp", None)
+        if isinstance(mtp_container, nn.Module):
+            fully_shard(mtp_container, mesh=hsdp_mesh, **fsdp_config)
         get_logger().info(f"Applied FSDP to {len(mtp_layers)} MTP layer(s)")
 
     shard_norm_and_lm_head = hasattr(model, "config") and not model.config.tie_word_embeddings
@@ -622,49 +621,12 @@ def reshard_module(model: nn.Module):
 
 
 def apply_ac(model: nn.Module, ac_config: ActivationCheckpointConfig):
-    logger = get_logger()
     language_model = get_language_model(model)
-    selective_layers = 0
-    full_layers = 0
-    fallback_layer_types: set[str] = set()
-    model_supported_targets: set[str] = set()
-
     for layer_id, (layer_name, transformer_block) in enumerate(language_model.layers.named_children()):
-        if layer_id % ac_config.freq != 0:
-            continue
-
-        if ac_config.mode == "selective" and supports_selective_activation_checkpointing(transformer_block):
-            model_supported_targets.update(get_supported_targets(transformer_block))
-            set_selective_activation_checkpointing(transformer_block, ac_config.targets)
-            selective_layers += 1
-        else:
-            if ac_config.mode == "selective":
-                fallback_layer_types.add(type(transformer_block).__name__)
+        if layer_id % ac_config.freq == 0:
             transformer_block = checkpoint_wrapper(transformer_block, preserve_rng_state=False)
-            full_layers += 1
-
         language_model.layers.register_module(layer_name, transformer_block)
-
-    if ac_config.mode == "selective":
-        unsupported_targets = frozenset(ac_config.targets) - model_supported_targets
-        if unsupported_targets:
-            raise ValueError(
-                f"Selective activation checkpoint targets {sorted(unsupported_targets)} are not supported "
-                f"by the selected model layers. Supported targets across the model: {sorted(model_supported_targets)}"
-            )
-        if fallback_layer_types:
-            logger.warning(
-                "Selective activation checkpointing is not supported for layer types "
-                f"{sorted(fallback_layer_types)}; falling back to full checkpointing for those layers."
-            )
-        logger.info(
-            "Applied selective activation checkpointing "
-            f"(freq={ac_config.freq}, targets={ac_config.targets}, selective_layers={selective_layers}, "
-            f"full_fallback_layers={full_layers})"
-        )
-        return
-
-    logger.info(f"Applied activation checkpointing (freq={ac_config.freq})")
+    get_logger().info(f"Applied activation checkpointing (freq={ac_config.freq})")
 
 
 def apply_compile(model: nn.Module, compile_config: CompileConfig):
@@ -695,12 +657,6 @@ def _move_buffers_to_cuda(model: nn.Module, config: ModelConfig) -> None:
     for _, buffer in model.named_buffers():
         if buffer.device.type == "cpu":
             buffer.data = buffer.data.to("cuda")
-
-
-def _reset_runtime_moe_buffers(model: nn.Module) -> None:
-    for module in model.modules():
-        if isinstance(module, (MoE, LatentMoE)) and module.tokens_per_expert.device.type != "meta":
-            module.tokens_per_expert.zero_()
 
 
 def _validate_flash_attn_4_installed() -> None:
@@ -743,7 +699,7 @@ def setup_model(
     config: ModelConfig,
     parallel_dims: ParallelDims,
     loading_from_checkpoint_later: bool = False,
-    fused_cross_entropy: bool | str = False,
+    fused_cross_entropy: bool = False,
 ) -> nn.Module:
     if config.attn == "flash_attention_3" and not is_flash_attn_3_available():
         raise ValueError(
@@ -837,7 +793,6 @@ def setup_model(
         else:
             load_dcp_from_hf(model, config, parallel_dims)
 
-    _reset_runtime_moe_buffers(model)
     return model
 
 
