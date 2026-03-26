@@ -709,6 +709,26 @@ class LatentMoE(nn.Module):
             persistent=False,
         )
 
+    def _run_routed_experts(
+        self,
+        x: torch.Tensor,
+        token_indices_experts_sorted: torch.Tensor,
+        num_tokens_per_expert: torch.Tensor,
+        top_scores_experts_sorted: torch.Tensor,
+    ) -> torch.Tensor:
+        dim = x.shape[-1]
+        token_indices_expanded = token_indices_experts_sorted.reshape(-1, 1).expand(-1, dim)
+        routed_input = torch.gather(x, dim=0, index=token_indices_expanded)
+
+        routed_input = self.fc1_latent_proj(routed_input)
+        routed_output = self.experts(routed_input, num_tokens_per_expert)
+
+        routed_output = (routed_output.float() * top_scores_experts_sorted.reshape(-1, 1)).to(routed_output.dtype)
+        routed_output = routed_output * self.routed_scaling_factor
+
+        routed_output = self.fc2_latent_proj(routed_output)
+        return routed_output
+
     def forward(self, x: torch.Tensor, routed_experts: torch.Tensor | None = None) -> torch.Tensor:
         bs, slen, dim = x.shape
         x_flat = x.view(-1, dim)
@@ -724,24 +744,13 @@ class LatentMoE(nn.Module):
             num_tokens_per_expert,
         ) = self.reorderer(top_scores, selected_experts_indices)
 
-        token_indices_expanded = token_indices_experts_sorted.reshape(-1, 1).expand(-1, dim)
-        routed_input = torch.gather(x_flat, dim=0, index=token_indices_expanded)
+        routed_output = self._run_routed_experts(
+            x_flat,
+            token_indices_experts_sorted,
+            num_tokens_per_expert,
+            top_scores_experts_sorted,
+        )
 
-        # Apply latent projection before expert computation
-        routed_input = self.fc1_latent_proj(routed_input)
-
-        routed_output = self.experts(routed_input, num_tokens_per_expert)
-
-        # Apply scores after expert computation (matches vLLM's fused kernel behavior)
-        routed_output = (routed_output.float() * top_scores_experts_sorted.reshape(-1, 1)).to(routed_output.dtype)
-
-        # Apply routed_scaling_factor after expert output
-        routed_output = routed_output * self.routed_scaling_factor
-
-        # Project back from latent space
-        routed_output = self.fc2_latent_proj(routed_output)
-
-        # Shared expert
         out = self.shared_expert(x_flat)
 
         token_indices_full = token_indices_experts_sorted.reshape(-1, 1).expand(-1, dim)

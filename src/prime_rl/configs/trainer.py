@@ -46,7 +46,7 @@ class ActivationCheckpointConfig(BaseConfig):
     targets: Annotated[
         list[str],
         Field(
-            description="Selective checkpoint targets. `norm` checkpoints every norm module inside selected layers (decoder, attention, MLA, etc.). `attn_proj` checkpoints QKV projections, QK norms, RoPE, and output projection — everything in the attention layer except the kernel. `mlp` checkpoints the entire dense MLP forward (not applicable to MoE layers). `mla_up_proj` checkpoints MLA Q/KV up-projection work where supported, and `routed_experts` checkpoints routed expert compute in MoE layers.",
+            description="Selective checkpoint targets. `norm` checkpoints every norm module inside selected layers (decoder, attention, MLA, etc.). `attn_proj` checkpoints QKV projections, QK norms, RoPE, and output projection — everything in the attention layer except the kernel. `mlp` checkpoints the entire dense MLP forward (not applicable to MoE layers). `mla_up_proj` checkpoints MLA Q/KV up-projection work where supported. `routed_experts` checkpoints routed expert compute in MoE layers (including LatentMoE). `mamba` checkpoints the Mamba mixer forward in NemotronH Mamba layers. `linear_attn` checkpoints the GatedDeltaNet forward in Qwen3.5-MoE linear attention layers.",
         ),
     ] = ["norm"]
 
