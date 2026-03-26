@@ -2,9 +2,14 @@
 
 Exposes training metrics at /metrics in Prometheus format.
 Also exposes /health endpoint for Kubernetes liveness probes.
-Runs in a background thread to avoid blocking the training loop.
+
+The metrics server runs in a background thread. Additionally, a separate
+health-check process is spawned that serves /health independently of the
+GIL — this ensures K8s liveness probes always get a response, even during
+long forward/backward passes that block the Python thread.
 """
 
+import multiprocessing
 import threading
 import time
 from dataclasses import dataclass
@@ -29,73 +34,85 @@ class RunStats:
     ready: bool
 
 
+def _health_process_main(host: str, port: int) -> None:
+    """Minimal health server in a separate process. Immune to GIL."""
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/health":
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"ok\n")
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    HTTPServer((host, port), Handler).serve_forever()
+
+
 class HealthServer:
     """Lightweight HTTP server exposing /health for Kubernetes liveness probes.
 
-    Can be subclassed to add additional endpoints (e.g., MetricsServer).
+    Runs in a separate process so it always responds, even when the trainer
+    holds the GIL during long forward/backward passes on large models.
     """
 
     def __init__(self, port: int, host: str = "0.0.0.0"):
         self.port = port
         self.host = host
-        self._server: HTTPServer | None = None
-        self._thread: threading.Thread | None = None
+        self._process: multiprocessing.Process | None = None
         self._started = False
 
-    def _make_handler(self) -> type[BaseHTTPRequestHandler]:
-        """Create the request handler class. Override to add endpoints."""
-
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                if self.path == "/health":
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/plain")
-                    self.end_headers()
-                    self.wfile.write(b"ok\n")
-                else:
-                    self.send_response(404)
-                    self.end_headers()
-
-            def log_message(self, format, *args):
-                pass
-
-        return Handler
-
     def start(self) -> None:
-        """Start the server in a background thread."""
         if self._started:
             logger.warning(f"{self.__class__.__name__} already started")
             return
 
-        self._server = HTTPServer((self.host, self.port), self._make_handler())
-        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
-        self._thread.start()
+        self._process = multiprocessing.Process(
+            target=_health_process_main, args=(self.host, self.port), daemon=True
+        )
+        self._process.start()
         self._started = True
-        logger.info(f"Health server started at http://{self.host}:{self.port}/health")
+        logger.info(f"Health server started at http://{self.host}:{self.port}/health (pid={self._process.pid})")
 
     def stop(self) -> None:
-        """Stop the server and release the port."""
-        if self._server is not None:
-            self._server.shutdown()
-            self._server.server_close()
-            if self._thread is not None:
-                self._thread.join(timeout=5.0)
-            self._server = None
-            self._thread = None
+        if self._process is not None:
+            self._process.terminate()
+            self._process.join(timeout=5.0)
+            if self._process.is_alive():
+                self._process.kill()
+            self._process = None
             self._started = False
             logger.info(f"{self.__class__.__name__} stopped")
 
 
 class MetricsServer(HealthServer):
-    """Prometheus metrics server extending HealthServer with /metrics endpoint.
+    """Prometheus metrics server with /metrics (thread) and /health (process).
 
-    Uses an isolated CollectorRegistry to avoid global state pollution.
-    Disabled by default - enable by setting `metrics_server` in trainer config.
+    /metrics runs in a background thread — may be delayed during GIL-heavy work
+    but Prometheus tolerates this (it retries on the next scrape interval).
+
+    /health runs in a separate process via the parent HealthServer — always
+    responsive for K8s liveness probes.
+
+    Both share the same port number but serve on different ports:
+    - metrics_port: /metrics + /health (thread, best-effort)
+    - metrics_port + 1: /health only (process, always responsive)
+
+    K8s probes should target metrics_port + 1 for guaranteed responsiveness.
+    For backwards compatibility, /health on the main port also works when the
+    GIL is available.
     """
 
     def __init__(self, config: "MetricsServerConfig"):
-        super().__init__(config.port, config.host)
+        # Health process runs on port + 1
+        super().__init__(config.port + 1, config.host)
         self.config = config
+        self._metrics_port = config.port
 
         self._registry = CollectorRegistry()
         self._step = Gauge("trainer_step", "Current training step", registry=self._registry)
@@ -145,9 +162,10 @@ class MetricsServer(HealthServer):
         )
         # Track known run labels for cleanup
         self._known_runs: set[str] = set()
+        self._server: HTTPServer | None = None
+        self._thread: threading.Thread | None = None
 
     def _make_handler(self) -> type[BaseHTTPRequestHandler]:
-        """Create handler with /metrics and /health endpoints."""
         registry = self._registry
 
         class Handler(BaseHTTPRequestHandler):
@@ -178,17 +196,29 @@ class MetricsServer(HealthServer):
         return Handler
 
     def start(self) -> None:
-        """Start the metrics server in a background thread."""
         if self._started:
             logger.warning("Metrics server already started")
             return
 
-        self._server = HTTPServer((self.host, self.port), self._make_handler())
+        # Start health process on port + 1 (GIL-free)
+        super().start()
+
+        # Start metrics thread on main port
+        self._server = HTTPServer((self.host, self._metrics_port), self._make_handler())
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
-        self._started = True
-        logger.info(f"Metrics server started at http://{self.host}:{self.port}/metrics")
-        logger.info(f"Health endpoint available at http://{self.host}:{self.port}/health")
+        logger.info(f"Metrics server started at http://{self.host}:{self._metrics_port}/metrics")
+        logger.info(f"GIL-free health endpoint at http://{self.host}:{self.port}/health")
+
+    def stop(self) -> None:
+        if self._server is not None:
+            self._server.shutdown()
+            self._server.server_close()
+            if self._thread is not None:
+                self._thread.join(timeout=5.0)
+            self._server = None
+            self._thread = None
+        super().stop()
 
     def update(
         self,
@@ -224,23 +254,14 @@ class MetricsServer(HealthServer):
         runs_max: int,
         run_stats: list[RunStats],
     ) -> None:
-        """Update run/LoRA metrics.
-
-        Args:
-            runs_discovered: Number of run_* folders found in output directory
-            runs_max: Maximum run capacity
-            run_stats: List of per-run statistics
-        """
-        # Update aggregate metrics
+        """Update run/LoRA metrics."""
         self._runs_discovered.set(runs_discovered)
         self._runs_active.set(len(run_stats))
         self._runs_ready.set(sum(1 for r in run_stats if r.ready))
         self._runs_max.set(runs_max)
 
-        # Track current runs for cleanup
         current_runs = {r.run_id for r in run_stats}
 
-        # Remove metrics for runs that no longer exist
         removed_runs = self._known_runs - current_runs
         for run_id in removed_runs:
             self._run_step.remove(run_id)
@@ -248,7 +269,6 @@ class MetricsServer(HealthServer):
             self._run_learning_rate.remove(run_id)
             self._run_ready.remove(run_id)
 
-        # Update per-run metrics
         for run in run_stats:
             self._run_step.labels(run=run.run_id).set(run.step)
             self._run_tokens.labels(run=run.run_id).set(run.total_tokens)
