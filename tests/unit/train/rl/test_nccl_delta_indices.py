@@ -96,8 +96,7 @@ def test_broadcast_delta_uses_selected_index_dtype(monkeypatch: pytest.MonkeyPat
     assert total_changed == 1
     assert full_bytes == 3 * torch.tensor([], dtype=torch.float32).element_size()
     assert delta_bytes == (
-        torch.tensor([], dtype=torch.float32).element_size()
-        + torch.tensor([], dtype=torch.int64).element_size()
+        torch.tensor([], dtype=torch.float32).element_size() + torch.tensor([], dtype=torch.int64).element_size()
     )
     assert communicator.broadcasted[0].device == communicator.device
     assert communicator.broadcasted[1].dtype == torch.int64
