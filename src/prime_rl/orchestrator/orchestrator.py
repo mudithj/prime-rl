@@ -12,7 +12,9 @@ from prime_rl.orchestrator.advantage import compute_advantages
 from prime_rl.orchestrator.eval_utils import compute_eval_ckpt_step, get_eval_sampling_args
 from prime_rl.orchestrator.event_loop_lag import EventLoopLagMonitor
 from prime_rl.orchestrator.patches import monkey_patch_chat_completion_logprobs, monkey_patch_oai_iterable_types
-from prime_rl.orchestrator.trajectories import build_vlm_image_cache, interleave_rollout, offload_images_to_disk
+from prime_rl.orchestrator.audio_cache import build_audio_cache
+from prime_rl.orchestrator.trajectories import interleave_rollout
+from prime_rl.orchestrator.vision_cache import build_vlm_image_cache, offload_images_to_disk
 from prime_rl.transport import TrainingBatch, TrainingSample, setup_training_batch_sender
 from prime_rl.utils.pathing import get_log_dir
 
@@ -139,6 +141,9 @@ async def orchestrate(config: OrchestratorConfig):
         processor = AutoProcessor.from_pretrained(
             config.model.name, trust_remote_code=config.model.trust_remote_code, use_fast=True
         )
+
+    # Check if this model has an audio encoder (processor has feature_extractor)
+    is_audio = is_vlm and processor is not None and hasattr(processor, "feature_extractor")
 
     # Setup monitor
     logger.info(f"Initializing monitor (wandb={config.wandb}, prime_monitor={config.prime_monitor})")
@@ -536,9 +541,19 @@ async def orchestrate(config: OrchestratorConfig):
         else:
             vlm_cache = None
 
+        # Audio: build audio feature cache
+        if is_audio:
+            audio_cache = build_audio_cache(train_rollouts, processor)
+            logger.info(
+                f"Audio timing: extract={audio_cache.extract_time:.2f}s, preprocess={audio_cache.preprocess_time:.2f}s "
+                f"({audio_cache.num_unique_audios} unique audios from {audio_cache.num_unique_examples} examples)"
+            )
+        else:
+            audio_cache = None
+
         # Process rollouts in parallel
         def process_rollout(rollout: vf.RolloutOutput, rollout_idx: int) -> list[TrainingSample] | None:
-            return interleave_rollout(rollout, vlm_cache=vlm_cache, cache_key=rollout_idx)
+            return interleave_rollout(rollout, vlm_cache=vlm_cache, audio_cache=audio_cache, cache_key=rollout_idx)
 
         loop = asyncio.get_event_loop()
         futures = [
@@ -799,7 +814,7 @@ async def orchestrate(config: OrchestratorConfig):
         is_first_step = False
 
         # Free large per-step objects to prevent memory accumulation
-        del train_rollouts, train_examples, training_batch, vlm_cache
+        del train_rollouts, train_examples, training_batch, vlm_cache, audio_cache
         del results_df, metrics_df, val_results_df
         gc.collect()
 

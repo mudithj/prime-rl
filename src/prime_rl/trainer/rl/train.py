@@ -343,11 +343,18 @@ def train(config: TrainerConfig):
             image_grid_thw = (
                 micro_batch["image_grid_thw"].to("cuda") if micro_batch.get("image_grid_thw") is not None else None
             )
+            # Audio fields (Qwen3-Omni)
+            input_features = (
+                micro_batch["input_features"].to("cuda") if micro_batch.get("input_features") is not None else None
+            )
+            audio_feature_lengths = (
+                micro_batch["audio_feature_lengths"].to("cuda") if micro_batch.get("audio_feature_lengths") is not None else None
+            )
 
             labels = shift_tensor_left(input_ids)
 
-            # VLM + CP is not supported: MRoPE requires global positions but CP shards the sequence
-            if cp_enabled and pixel_values is not None:
+            # VLM/audio + CP is not supported: MRoPE requires global positions but CP shards the sequence
+            if cp_enabled and (pixel_values is not None or input_features is not None):
                 raise NotImplementedError("Context parallelism is not supported with VLM/multimodal training")
 
             if cp_enabled:
@@ -387,6 +394,8 @@ def train(config: TrainerConfig):
                     temperature=temperatures,
                     pixel_values=pixel_values,
                     image_grid_thw=image_grid_thw,
+                    input_features=input_features,
+                    audio_feature_lengths=audio_feature_lengths,
                     routed_experts=routed_experts,
                 )
 
@@ -408,7 +417,7 @@ def train(config: TrainerConfig):
                 dist.all_gather(entropies, out["entropy"], group=cp_group)
                 out["entropy"] = torch.cat(entropies, dim=1)
 
-            vocab_size = getattr(model.config, "vocab_size", None) or model.config.text_config.vocab_size
+            vocab_size = model.config.get_text_config().vocab_size
             # This is not really necessary as the first token should be masked out, but we do it anyway to be sure
             out["logprobs"] = shift_tensor_right(
                 out["logprobs"], pad_value=torch.log(torch.tensor(1.0 / vocab_size)).item()

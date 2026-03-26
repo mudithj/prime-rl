@@ -21,6 +21,11 @@ class TrainingSample(msgspec.Struct, array_like=True, gc=False, omit_defaults=Tr
     # image_grid_thw: grid dimensions [num_images, 3] where each entry is [temporal, height, width]
     image_grid_thw: list[list[int]] | None = None
 
+    # Audio fields (Qwen3-Omni) — input_features stored as raw float32 bytes
+    input_features: bytes | None = None
+    input_features_shape: list[int] | None = None  # [num_clips, feature_size, time_dim]
+    audio_feature_lengths: list[int] | None = None
+
     routed_experts: list[list[list[int]]] | None = None  # [seq_len, layers, topk]
 
 
@@ -51,3 +56,8 @@ class MicroBatch(msgspec.Struct, array_like=True, gc=False, omit_defaults=True):
     pixel_values_shape: list[int] | None = None  # [num_patches, patch_dim]
     # image_grid_thw: grid dimensions [num_images, 3] where each entry is [temporal, height, width]
     image_grid_thw: list[list[int]] | None = None
+
+    # Audio fields (Qwen3-Omni) — input_features stored as raw float32 bytes
+    input_features: bytes | None = None
+    input_features_shape: list[int] | None = None  # [num_clips, feature_size, time_dim]
+    audio_feature_lengths: list[int] | None = None

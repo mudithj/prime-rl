@@ -133,14 +133,130 @@ def freeze_vision_encoder(model: nn.Module) -> None:
     # Qwen2-VL structure: model.visual
     elif hasattr(model, "visual"):
         vision_encoder = model.visual
+    # Qwen3-Omni structure: model.thinker.visual
+    elif hasattr(model, "thinker") and hasattr(model.thinker, "visual"):
+        vision_encoder = model.thinker.visual
     else:
-        raise ValueError("Could not find vision encoder to freeze. Expected model.model.visual or model.visual")
+        raise ValueError("Could not find vision encoder to freeze. Expected model.model.visual, model.visual, or model.thinker.visual")
+
+    # Also freeze audio tower if present (e.g. Qwen3-Omni)
+    audio_tower = None
+    if hasattr(model, "audio_tower"):
+        audio_tower = model.audio_tower
+    elif hasattr(model, "model") and hasattr(model.model, "audio_tower"):
+        audio_tower = model.model.audio_tower
+    elif hasattr(model, "thinker") and hasattr(model.thinker, "audio_tower"):
+        audio_tower = model.thinker.audio_tower
 
     num_frozen = 0
     for param in vision_encoder.parameters():
         param.requires_grad = False
         num_frozen += 1
     logger.info(f"Froze {num_frozen} parameters in vision encoder")
+
+    if audio_tower is not None:
+        num_audio_frozen = 0
+        for param in audio_tower.parameters():
+            param.requires_grad = False
+            num_audio_frozen += 1
+        logger.info(f"Froze {num_audio_frozen} parameters in audio encoder")
+
+
+def _inject_thinker_lm_head(model: nn.Module, chunk_size: int | None, fused_cross_entropy: bool) -> None:
+    """Prime LM head injection for models with a .thinker sub-module (e.g. Qwen3-Omni).
+
+    Standard inject_prime_lm_head patches model.forward to call self.model + self.lm_head,
+    bypassing thinker's audio/vision preprocessing entirely. Instead:
+      1. Directly replace thinker.lm_head with the appropriate Prime wrapper.
+      2. Patch the outer model.forward to call thinker (preserving all preprocessing),
+         then route the returned hidden states through the prime lm_head.
+    No proxies. No calling inject_prime_lm_head.
+    """
+    import types
+    from prime_rl.trainer.models.layers.lm_head import (
+        FusedCrossEntropyOutputLinear,
+        FusedOutputLinear,
+        VanillaOutputLinear,
+    )
+
+    logger = get_logger()
+    thinker = model.thinker
+
+    old_lm_head = thinker.lm_head
+
+    if fused_cross_entropy:
+        logger.info("Injecting fused cross-entropy LM head (Liger kernel)")
+        new_lm_head = FusedCrossEntropyOutputLinear(
+            in_features=old_lm_head.in_features,
+            out_features=old_lm_head.out_features,
+        )
+    elif isinstance(chunk_size, int):
+        logger.info(f"Injecting chunked LM head with chunk size {chunk_size}")
+        new_lm_head = FusedOutputLinear(
+            in_features=old_lm_head.in_features,
+            out_features=old_lm_head.out_features,
+            chunk_size=chunk_size,
+        )
+    else:
+        logger.info("Injecting vanilla LM head")
+        new_lm_head = VanillaOutputLinear(
+            in_features=old_lm_head.in_features,
+            out_features=old_lm_head.out_features,
+        )
+
+    new_lm_head.weight = old_lm_head.weight
+    del old_lm_head
+    prime_lm_head = new_lm_head
+    thinker.lm_head = prime_lm_head
+    # Also register on outer model for FSDP sharding
+    model.lm_head = prime_lm_head
+
+    def new_outer_forward(
+        self: nn.Module,
+        input_ids=None,
+        position_ids=None,
+        inputs_embeds=None,
+        labels=None,
+        logits_to_keep: int = 0,
+        temperature=None,
+        # Multimodal fields (Qwen3-VL)
+        pixel_values=None,
+        image_grid_thw=None,
+        # Audio fields (Qwen3-Omni)
+        input_features=None,
+        feature_attention_mask=None,
+        audio_feature_lengths=None,
+        # MoE router replay
+        routed_experts=None,
+    ) -> PrimeLmOutput:
+        # Expand 2D position_ids [batch, seq] to 4D [4, batch, seq] for Omni's MRoPE.
+        # Thinker also does this internally, but being explicit avoids get_rope_index
+        # trying to recompute positions from packed input_ids.
+        thinker_position_ids = None
+        if position_ids is not None:
+            if position_ids.ndim == 2:
+                thinker_position_ids = position_ids.unsqueeze(0).expand(4, -1, -1)
+            else:
+                thinker_position_ids = position_ids
+
+        outputs = self.thinker(
+            input_ids=input_ids,
+            position_ids=thinker_position_ids,
+            use_cache=False,
+            inputs_embeds=inputs_embeds,
+            return_dict=True,
+            pixel_values=pixel_values,
+            image_grid_thw=image_grid_thw,
+            input_features=input_features,
+            feature_attention_mask=feature_attention_mask,
+            audio_feature_lengths=audio_feature_lengths,
+        )
+        prime_out = outputs.logits
+        if not isinstance(prime_out, dict):
+            prime_out = PrimeLmOutput(logits=prime_out)
+        return prime_out
+
+    model.forward = types.MethodType(new_outer_forward, model)
 
 
 def freeze_moe_router(model: nn.Module) -> None:
@@ -178,9 +294,13 @@ def is_tt_moe_model(model: nn.Module) -> bool:
 def get_language_model(model: nn.Module) -> nn.Module:
     """Get the language model component containing transformer layers.
 
+    For Qwen3-Omni: model.thinker.model
     For VLM models (Qwen3-VL): model.model.language_model
     For text-only models: model.model
     """
+    # Qwen3-Omni nests the LM under thinker
+    if hasattr(model, "thinker"):
+        return model.thinker.model
     if hasattr(model.model, "language_model"):
         return model.model.language_model
     return model.model
@@ -276,11 +396,13 @@ def get_model(
     logger.debug(f"Loaded model config ({model_config.to_dict()})")
 
     if config.debug.num_layers is not None:
-        num_hidden_layers = min(config.debug.num_layers, model_config.num_hidden_layers)
+        # get_text_config() resolves the leaf text config for any VLM nesting depth
+        _layer_cfg = model_config.get_text_config() if hasattr(model_config, "get_text_config") else model_config
+        num_hidden_layers = min(config.debug.num_layers, _layer_cfg.num_hidden_layers)
         logger.warning(
-            f"Setting the number of layers to {config.debug.num_layers} in the model config. This means {model_config.num_hidden_layers - num_hidden_layers} layers will not be loaded."
+            f"Setting the number of layers to {config.debug.num_layers} in the model config. This means {_layer_cfg.num_hidden_layers - num_hidden_layers} layers will not be loaded."
         )
-        model_config.num_hidden_layers = num_hidden_layers
+        _layer_cfg.num_hidden_layers = num_hidden_layers
 
     # Determine the implementation to use
     custom_vlm_cls = get_custom_vlm_cls(model_config) if is_vlm else None
@@ -298,9 +420,23 @@ def get_model(
             if impl_to_use == "custom" and custom_vlm_cls is not None:
                 model_cls = custom_vlm_cls
             else:
-                from transformers import AutoModelForImageTextToText
+                from transformers import AutoModelForCausalLM, AutoModelForImageTextToText
+                from transformers.models.auto.modeling_auto import (
+                    MODEL_FOR_CAUSAL_LM_MAPPING_NAMES,
+                    MODEL_FOR_IMAGE_TEXT_TO_TEXT_MAPPING_NAMES,
+                    MODEL_FOR_MULTIMODAL_LM_MAPPING_NAMES,
+                )
 
-                model_cls = AutoModelForImageTextToText
+                model_type = getattr(model_config, "model_type", None)
+                if model_type in MODEL_FOR_IMAGE_TEXT_TO_TEXT_MAPPING_NAMES:
+                    model_cls = AutoModelForImageTextToText
+                elif model_type in MODEL_FOR_MULTIMODAL_LM_MAPPING_NAMES:
+                    from transformers import AutoModelForMultimodalLM
+                    model_cls = AutoModelForMultimodalLM
+                elif model_type in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES:
+                    model_cls = AutoModelForCausalLM
+                else:
+                    model_cls = AutoModelForImageTextToText
         else:
             match impl_to_use:
                 case "hf":
@@ -329,9 +465,11 @@ def get_model(
     if is_vlm:
         freeze_vision_encoder(model)
 
-    assert model.lm_head.weight.dtype == dtype, (
-        f"LM head dtype wasnt loaded correctly {model.lm_head.weight.dtype} != {dtype}"
-    )
+    _lm_head = model.lm_head if hasattr(model, "lm_head") else (model.thinker.lm_head if hasattr(model, "thinker") else None)
+    if _lm_head is not None:
+        assert _lm_head.weight.dtype == dtype, (
+            f"LM head dtype wasnt loaded correctly {_lm_head.weight.dtype} != {dtype}"
+        )
     return model
 
 
@@ -367,9 +505,11 @@ def setup_fsdp(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDim
 
     # For VLM models, shard the frozen vision encoder as a single unit
     # This allows FSDP to manage the memory while keeping it frozen
-    is_vlm = is_vlm_model(config.name) or (hasattr(model, "model") and hasattr(model.model, "visual"))
+    is_vlm = is_vlm_model(config.name) or (hasattr(model, "model") and hasattr(model.model, "visual")) or hasattr(model, "thinker")
     if is_vlm:
-        if hasattr(model, "model") and hasattr(model.model, "visual"):
+        if hasattr(model, "thinker") and hasattr(model.thinker, "visual"):
+            vision_encoder = model.thinker.visual
+        elif hasattr(model, "model") and hasattr(model.model, "visual"):
             vision_encoder = model.model.visual
         elif hasattr(model, "visual"):
             vision_encoder = model.visual
@@ -384,14 +524,8 @@ def setup_fsdp(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDim
         get_logger().info("Applied FSDP to frozen vision encoder")
 
     # Get the language model layers (handle VLM structure)
-    # For Qwen3-VL: model.model.language_model contains the transformer layers
-    # For text-only models: model.model contains the layers directly
-    if is_vlm:
-        language_model = model.model.language_model
-        transformer_layers = language_model.layers
-    else:
-        language_model = model.model
-        transformer_layers = language_model.layers
+    language_model = get_language_model(model)
+    transformer_layers = language_model.layers
 
     for transformer_block in transformer_layers:
         if parallel_dims.ep_enabled and isinstance(transformer_block.mlp, MoE):
@@ -405,7 +539,9 @@ def setup_fsdp(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDim
             **fsdp_config,
         )
 
-    shard_norm_and_lm_head = hasattr(model, "config") and not model.config.tie_word_embeddings
+    shard_norm_and_lm_head = hasattr(model, "config") and not model.config.get_text_config().tie_word_embeddings
+
+    _lm_head = getattr(model, "lm_head", None) or (model.thinker.lm_head if hasattr(model, "thinker") else None)
 
     if shard_norm_and_lm_head:
         # This optimization breaks weight tying
@@ -415,7 +551,7 @@ def setup_fsdp(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDim
             **fsdp_config,
         )
         fully_shard(
-            [model.lm_head, language_model.norm],
+            [_lm_head, language_model.norm],
             mesh=hsdp_mesh,
             mp_policy=mp_policy,
             offload_policy=offload_policy,
@@ -453,17 +589,17 @@ def setup_fsdp(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDim
                 )
             else:
                 transformer_block.set_modules_to_forward_prefetch([next_transformer_block])
-        elif language_model.norm is not None and model.lm_head is not None:
+        elif language_model.norm is not None and _lm_head is not None:
             if shard_norm_and_lm_head:
-                transformer_block.set_modules_to_forward_prefetch([language_model.norm, model.lm_head])
+                transformer_block.set_modules_to_forward_prefetch([language_model.norm, _lm_head])
 
     # backward
     reversed_transformer_blocks = list(reversed(language_model.layers))
     prev_transformer_blocks = reversed_transformer_blocks[1:] + [None]
 
-    if language_model.norm is not None and model.lm_head is not None and len(language_model.layers) > 0:
+    if language_model.norm is not None and _lm_head is not None and len(language_model.layers) > 0:
         if shard_norm_and_lm_head:
-            model.lm_head.set_modules_to_backward_prefetch([reversed_transformer_blocks[0]])
+            _lm_head.set_modules_to_backward_prefetch([reversed_transformer_blocks[0]])
         else:
             model.set_modules_to_backward_prefetch([reversed_transformer_blocks[0]])
 
@@ -548,14 +684,14 @@ def load_dcp_from_hf(model: nn.Module, config: ModelConfig, parallel_dims: Paral
     load_dcp_start_time = time.perf_counter()
     state_dict = model.state_dict()
     state_dict = strip_lora_from_state_dict(state_dict)
-    if model.config.tie_word_embeddings:
+    if model.config.get_text_config().tie_word_embeddings:
         del state_dict["lm_head.weight"]
     dcp_load(
         state_dict,
         storage_reader=HuggingFaceStorageReader(path=snapshot_path.as_posix()),
     )
     # Restore weight tying broken by to_empty() for HF models
-    if not isinstance(model, PreTrainedModelPrimeRL) and model.config.tie_word_embeddings:
+    if not isinstance(model, PreTrainedModelPrimeRL) and model.config.get_text_config().tie_word_embeddings:
         model.tie_weights()
     _init_buffers_post_meta()
 
@@ -747,9 +883,16 @@ def setup_model(
     if isinstance(config.fused_lm_head_token_chunk_size, int):
         lm_head_chunk_size = config.fused_lm_head_token_chunk_size
 
-    inject_prime_lm_head(model, chunk_size=lm_head_chunk_size, fused_cross_entropy=fused_cross_entropy)
+    if hasattr(model, "thinker"):
+        _inject_thinker_lm_head(model, chunk_size=lm_head_chunk_size, fused_cross_entropy=fused_cross_entropy)
+        # Swap HF per-expert MoE with GroupedExperts (grouped gemm) for performance
+        if config.moe_use_grouped_mm:
+            from prime_rl.trainer.swap_moe_to_grouped import swap_thinker_moe_to_grouped
+            n = swap_thinker_moe_to_grouped(model)
+            logger.info(f"Swapped {n} MoE layers to GroupedExperts (grouped gemm)")
+    else:
+        inject_prime_lm_head(model, chunk_size=lm_head_chunk_size, fused_cross_entropy=fused_cross_entropy)
 
-    # Apply LoRA before FSDP setup
     if config.lora is not None:
         apply_lora_to_model(model, config.lora)
 
@@ -789,7 +932,7 @@ def setup_model(
             else:
                 fix_model_post_empty(model)
                 # Restore weight tying broken by to_empty() for HF models
-                if model.config.tie_word_embeddings:
+                if model.config.get_text_config().tie_word_embeddings:
                     model.tie_weights()
 
             _move_buffers_to_cuda(model, config)
@@ -811,6 +954,9 @@ def forward(
     # Multimodal fields (Qwen3-VL)
     pixel_values: Float[Tensor, "num_patches patch_dim"] | None = None,
     image_grid_thw: Int[Tensor, "num_images 3"] | None = None,
+    # Audio fields (Qwen3-Omni)
+    input_features: Float[Tensor, "num_clips feature_size time_dim"] | None = None,
+    audio_feature_lengths: Int[Tensor, "num_clips"] | None = None,
 ) -> PrimeLmOutput:
     # Build kwargs for model forward
     kwargs = {
@@ -825,6 +971,19 @@ def forward(
         assert image_grid_thw is not None, "pixel_values requires image_grid_thw for MRoPE computation"
         kwargs["pixel_values"] = pixel_values
         kwargs["image_grid_thw"] = image_grid_thw
+    elif input_features is not None:
+        kwargs["input_features"] = input_features
+        if audio_feature_lengths is not None:
+            kwargs["audio_feature_lengths"] = audio_feature_lengths
+            # Build feature_attention_mask from lengths here (outside AC-checkpointed region)
+            # so the same mask tensor is reused on recompute, avoiding sequence length mismatches.
+            T = input_features.shape[-1]
+            batch = audio_feature_lengths.shape[0]
+            mask = torch.zeros(batch, T, dtype=torch.long, device=input_features.device)
+            for i in range(batch):
+                mask[i, :audio_feature_lengths[i]] = 1
+            kwargs["feature_attention_mask"] = mask
+        kwargs["position_ids"] = position_ids
     else:
         kwargs["position_ids"] = position_ids
 

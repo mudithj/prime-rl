@@ -67,12 +67,16 @@ def prepare_sample(training_example: TrainingSample, seq_len: int) -> MicroBatch
         pixel_values=training_example.pixel_values,
         pixel_values_shape=training_example.pixel_values_shape,
         image_grid_thw=training_example.image_grid_thw,
+        # Audio fields (Qwen3-Omni) - passed through without modification
+        input_features=training_example.input_features,
+        input_features_shape=training_example.input_features_shape,
+        audio_feature_lengths=training_example.audio_feature_lengths,
     )
 
 
 def _is_multimodal_sample(sample: MicroBatch) -> bool:
-    """Check if a sample contains multimodal data (images)."""
-    return sample.pixel_values is not None
+    """Check if a sample contains multimodal data (images or audio)."""
+    return sample.pixel_values is not None or sample.input_features is not None
 
 
 def packed_samples_into_micro_bs(
@@ -82,9 +86,8 @@ def packed_samples_into_micro_bs(
     Pack samples into micro_batch efficiently.
     We follow the First Fit Decreasing algorithm to pack the samples into bins and minimize potential padding while never truncating.
     With per-token temperatures, samples can be packed together regardless of their temperature values.
-
-    NOTE: Multimodal samples (with pixel_values) are NOT packed together as they have variable-sized
-    vision data that doesn't pack well. Each multimodal sample becomes its own micro batch.
+    Multimodal samples (with pixel_values or input_features) are packed normally — encoder isolation
+    is handled by cu_seqlens, and masked_scatter is order-preserving.
     """
     # Sort by (lora_idx, -length) for packing efficiency
     samples.sort(key=lambda x: (x[0], -len(x[1].input_ids)))
@@ -93,18 +96,8 @@ def packed_samples_into_micro_bs(
     micro_batches: list[MicroBatch] = []
 
     for idx, sample in samples:
-        # Multimodal samples cannot be packed - each becomes its own micro batch
-        if _is_multimodal_sample(sample):
-            sample.lora_num_tokens = [0] * num_loras
-            sample.lora_num_tokens[idx] = len(sample.input_ids)
-            micro_batches.append(sample)
-            continue
-
-        # Try to find a bin that can fit this sequence (only pack text-only samples)
+        # Try to find a bin that can fit this sequence
         for bin_content in micro_batches:
-            # Don't pack into multimodal micro batches
-            if _is_multimodal_sample(bin_content):
-                continue
             # Check if sequence fits in this bin
             if len(bin_content.input_ids) + len(sample.input_ids) <= max_seq_len:
                 bin_content.input_ids.extend(sample.input_ids)
@@ -122,6 +115,25 @@ def packed_samples_into_micro_bs(
                     bin_content.routed_experts.extend(sample.routed_experts)
                 bin_content.position_ids.extend(sample.position_ids)
                 bin_content.lora_num_tokens[idx] += len(sample.input_ids)
+                # Merge multimodal fields when packing
+                if sample.pixel_values is not None:
+                    if bin_content.pixel_values is None:
+                        bin_content.pixel_values = sample.pixel_values
+                        bin_content.pixel_values_shape = list(sample.pixel_values_shape)
+                        bin_content.image_grid_thw = list(sample.image_grid_thw)
+                    else:
+                        bin_content.pixel_values += sample.pixel_values
+                        bin_content.pixel_values_shape[0] += sample.pixel_values_shape[0]
+                        bin_content.image_grid_thw.extend(sample.image_grid_thw)
+                if sample.input_features is not None:
+                    if bin_content.input_features is None:
+                        bin_content.input_features = sample.input_features
+                        bin_content.input_features_shape = list(sample.input_features_shape)
+                        bin_content.audio_feature_lengths = list(sample.audio_feature_lengths)
+                    else:
+                        bin_content.input_features += sample.input_features
+                        bin_content.input_features_shape[0] += sample.input_features_shape[0]
+                        bin_content.audio_feature_lengths.extend(sample.audio_feature_lengths)
                 break
         else:
             sample.lora_num_tokens = [0] * num_loras

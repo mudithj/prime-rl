@@ -78,6 +78,10 @@ def _find_target_modules(model: nn.Module, target_patterns: List[str]) -> List[s
         if not (isinstance(module, nn.Linear) or isinstance(module, GroupedExperts)):
             continue
 
+        # Skip frozen modules (e.g. vision/audio encoders)
+        if not any(p.requires_grad for p in module.parameters()):
+            continue
+
         for pattern in target_patterns:
             if _matches_pattern(name, pattern):
                 target_modules.append(name)

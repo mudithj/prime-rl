@@ -127,6 +127,11 @@ class SharedModelConfig(BaseConfig):
         Field(description="The name of the model to use."),
     ] = "Qwen/Qwen3-0.6B"
 
+    trust_remote_code: Annotated[
+        bool,
+        Field(description="Whether to trust remote code when loading the model."),
+    ] = False
+
 
 class SharedWeightBroadcastConfig(BaseConfig):
     """Configures shared weight broadcast settings."""
@@ -463,8 +468,13 @@ class RLConfig(BaseConfig):
         if self.model is not None:
             self.trainer.model.name = self.model.name
             self.orchestrator.model.name = self.model.name
+            if self.model.trust_remote_code:
+                self.trainer.model.trust_remote_code = self.model.trust_remote_code
+                self.orchestrator.model.trust_remote_code = self.model.trust_remote_code
             if self.inference is not None:
                 self.inference.model.name = self.model.name
+                if self.model.trust_remote_code:
+                    self.inference.model.trust_remote_code = self.model.trust_remote_code
 
         validate_shared_model_name(self.trainer, self.orchestrator, self.inference)
 

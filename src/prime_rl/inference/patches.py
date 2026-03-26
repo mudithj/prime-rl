@@ -10,6 +10,32 @@ def transformers_v5_compat():
         Qwen3VLMoeTextConfig.tie_word_embeddings = False
 
     _patch_qwen35_lora()
+    _patch_qwen3_omni_lora()
+
+
+def _patch_qwen3_omni_lora():
+    """Enable LoRA support for Qwen3-Omni in vLLM.
+
+    vLLM gates LoRA on a supports_lora ClassVar. Qwen3-Omni's thinker class
+    doesn't set it. The model is all standard Linear/MergedColumnParallelLinear
+    layers, so LoRA works fine once the gate is removed.
+    """
+    try:
+        from vllm.model_executor.models.interfaces import SupportsLoRA
+        from vllm.model_executor.models.qwen3_omni_moe_thinker import (
+            Qwen3OmniMoeThinkerForConditionalGeneration,
+        )
+    except ImportError:
+        return
+
+    if not getattr(Qwen3OmniMoeThinkerForConditionalGeneration, "supports_lora", False):
+        Qwen3OmniMoeThinkerForConditionalGeneration.__bases__ = (
+            Qwen3OmniMoeThinkerForConditionalGeneration.__bases__ + (SupportsLoRA,)
+        )
+        Qwen3OmniMoeThinkerForConditionalGeneration.supports_lora = True
+        Qwen3OmniMoeThinkerForConditionalGeneration.embedding_modules = {}
+        Qwen3OmniMoeThinkerForConditionalGeneration.embedding_padding_modules = []
+
 
 
 def _patch_qwen35_lora():
@@ -453,3 +479,5 @@ def monkey_patch_minimax_m2_for_lora():
             ".up_proj.": ".w3.",
         },
     )
+
+

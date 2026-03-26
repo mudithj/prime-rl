@@ -37,6 +37,10 @@ class TensorMicroBatch(TypedDict):
     # image_grid_thw: grid dimensions [num_images, 3] where each entry is [temporal, height, width]
     image_grid_thw: Int[Tensor, "num_images 3"] | None
 
+    # Audio fields (Qwen3-Omni)
+    input_features: Float[Tensor, "num_clips feature_size time_dim"] | None
+    audio_feature_lengths: Int[Tensor, "num_clips"] | None
+
 
 class FakeDataLoader:
     def __init__(self, config: FakeDataLoaderConfig, seq_len: int, dp_world_size: int):
@@ -108,6 +112,8 @@ class FakeDataLoader:
             "routed_experts": None,
             "pixel_values": None,
             "image_grid_thw": None,
+            "input_features": None,
+            "audio_feature_lengths": None,
         }
 
     def _get_micro_batch(self, generator: torch.Generator) -> TensorMicroBatch:
@@ -133,6 +139,8 @@ class FakeDataLoader:
             "routed_experts": None,
             "pixel_values": None,
             "image_grid_thw": None,
+            "input_features": None,
+            "audio_feature_lengths": None,
         }
 
 
@@ -201,6 +209,15 @@ class DataLoader:
             else None,
             image_grid_thw=torch.tensor(micro_batch.image_grid_thw, dtype=torch.long)
             if micro_batch.image_grid_thw is not None
+            else None,
+            # Audio fields
+            input_features=torch.frombuffer(bytearray(micro_batch.input_features), dtype=torch.float32).reshape(
+                micro_batch.input_features_shape
+            )
+            if micro_batch.input_features is not None
+            else None,
+            audio_feature_lengths=torch.tensor(micro_batch.audio_feature_lengths, dtype=torch.long)
+            if micro_batch.audio_feature_lengths is not None
             else None,
             routed_experts=torch.tensor(micro_batch.routed_experts, dtype=torch.int32).unsqueeze(
                 0

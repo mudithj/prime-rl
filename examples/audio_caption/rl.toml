@@ -1,0 +1,50 @@
+max_steps = 500
+seq_len = 8192
+
+[wandb]
+project = "audio-caption"
+name = "audio-caption-sft-init-rl-r8a64-v2"
+
+[ckpt]
+
+[model]
+name = "Qwen/Qwen3-Omni-30B-A3B-Instruct"
+trust_remote_code = true
+
+[trainer.model]
+impl = "auto"
+optimization_dtype = "bfloat16"
+
+[trainer.model.ac]
+freq = 1
+
+[trainer.model.lora]
+rank = 8
+alpha = 64
+target_modules = ["^thinker\\..*q_proj$", "^thinker\\..*k_proj$", "^thinker\\..*v_proj$", "^thinker\\..*o_proj$", "^thinker\\..*gate_proj$", "^thinker\\..*up_proj$", "^thinker\\..*down_proj$", "^thinker\\..*experts$"]
+
+[trainer.optim]
+lr = 2e-5
+
+[orchestrator]
+batch_size = 256
+rollouts_per_example = 8
+max_off_policy_steps = 4
+max_concurrent = 256
+
+[orchestrator.sampling]
+max_tokens = 768
+
+[[orchestrator.env]]
+id = "audio_caption_multiturn_env"
+name = "audio-caption-mt"
+args = { num_examples = 2000, seed = 42, min_turns = 1, max_turns = 2 }
+
+[inference]
+gpu_memory_utilization = 0.9
+
+[inference.model]
+max_model_len = 6144
+
+[inference.vllm_extra]
+mm_processor_cache_gb = 0
