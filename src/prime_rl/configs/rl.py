@@ -717,7 +717,7 @@ class RLConfig(BaseConfig):
     def auto_setup_deployment(self):
         if self.deployment.type == "single_node":  # single-node
             # set num_train_workers to the number of data replicas
-            non_data_parallel_size = self.trainer.model.cp * self.trainer.model.tp
+            non_data_parallel_size = self.trainer.model.cp
             if self.deployment.num_train_gpus > 1:
                 self.orchestrator.num_train_workers = self.deployment.num_train_gpus // non_data_parallel_size
 

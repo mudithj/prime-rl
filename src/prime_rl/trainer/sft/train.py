@@ -89,10 +89,10 @@ def train(config: SFTConfig):
     # Initialize parallel dimensions
     parallel_dims = get_parallel_dims(config.model, config.data.seq_len)
 
-    total_micro_batches = config.data.batch_size * config.model.cp * config.model.tp
+    total_micro_batches = config.data.batch_size * config.model.cp
     micro_batches_per_step = world.world_size * config.data.micro_batch_size
     assert total_micro_batches % micro_batches_per_step == 0, (
-        f"batch_size * cp * tp ({total_micro_batches}) must be divisible by "
+        f"batch_size * cp ({total_micro_batches}) must be divisible by "
         f"world_size * micro_batch_size ({micro_batches_per_step})"
     )
     grad_accum_steps = total_micro_batches // micro_batches_per_step
@@ -151,7 +151,7 @@ def train(config: SFTConfig):
 
     # Set up the dataset and dataloader
     logger.info(f"Initializing data ({config.data})")
-    dataset = setup_dataset(tokenizer, config.data, config.model.cp * config.model.tp)
+    dataset = setup_dataset(tokenizer, config.data, config.model.cp)
     dataloader = setup_dataloader(dataset, config.data)
     dataiter = iter(dataloader)
 
@@ -257,7 +257,7 @@ def train(config: SFTConfig):
 
     def run_validation(step: int) -> None:
         val_dataset = setup_dataset(
-            tokenizer, config.val.data, config.model.cp * config.model.tp, max_epochs=1, raw_dataset=val_raw_dataset
+            tokenizer, config.val.data, config.model.cp, max_epochs=1, raw_dataset=val_raw_dataset
         )
         val_dataloader = setup_dataloader(val_dataset, config.val.data)
 
@@ -409,8 +409,8 @@ def train(config: SFTConfig):
             memory_profiler.step()
 
         # Compute step metrics
-        # Divide by CP and TP since those ranks process the same data
-        num_tokens = config.data.batch_size * config.data.seq_len // (config.model.cp * config.model.tp)
+        # Divide by CP since those ranks process the same data
+        num_tokens = config.data.batch_size * config.data.seq_len // config.model.cp
         progress.total_tokens += num_tokens
         progress.total_samples = dataset.step
         perf_counter = get_perf_counter(model, config.data.seq_len)

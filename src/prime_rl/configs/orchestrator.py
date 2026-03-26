@@ -287,6 +287,17 @@ class EnvConfig(BaseConfig):
             ),
         ),
     ] = {}
+    num_workers: Annotated[
+        int | Literal["auto"],
+        Field(
+            description=(
+                "Number of env server worker processes. "
+                "Set to 'auto' to scale based on the env's concurrency (1 worker per 256 concurrent rollouts). "
+                "When setting manually, we recommend sizing so that each worker handles at most 256 concurrent rollouts. "
+                "Only used when the orchestrator spawns the env server (i.e. address is None)."
+            ),
+        ),
+    ] = "auto"
     max_retries: Annotated[
         int,
         Field(
