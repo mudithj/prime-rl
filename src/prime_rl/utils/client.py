@@ -351,9 +351,9 @@ async def init_nccl_broadcast(
 ) -> None:
     """Initialize NCCL broadcast on all inference servers.
 
-    Each admin client represents one vLLM server. The function computes
-    per-server rank_offset and gpus_per_server so that every inference GPU
-    gets a unique rank in the NCCL broadcast group.
+    Each admin client represents one vLLM server. The function computes a
+    per-server rank offset so that every inference GPU gets a unique rank in
+    the NCCL broadcast group.
     """
     logger = get_logger()
 
@@ -363,11 +363,11 @@ async def init_nccl_broadcast(
             f"inference_world_size not provided, defaulting to {inference_world_size} (one GPU per admin client)"
         )
 
-    gpus_per_server = inference_world_size // len(admin_clients)
+    rank_stride = inference_world_size // len(admin_clients)
 
     logger.info(
         f"Initializing NCCL broadcast: {len(admin_clients)} servers, "
-        f"inference_world_size={inference_world_size}, gpus_per_server={gpus_per_server}"
+        f"inference_world_size={inference_world_size}, rank_stride={rank_stride}"
     )
 
     async def _init_nccl_broadcast(admin_client: AsyncClient, rank_offset: int) -> None:
@@ -379,7 +379,6 @@ async def init_nccl_broadcast(
                     "port": port,
                     "rank_offset": rank_offset,
                     "inference_world_size": inference_world_size,
-                    "gpus_per_server": gpus_per_server,
                     "timeout": timeout,
                     "quantize_in_weight_transfer": quantize_in_weight_transfer,
                     "delta_compression": delta_compression,
@@ -393,7 +392,7 @@ async def init_nccl_broadcast(
 
     await asyncio.gather(
         *[
-            _init_nccl_broadcast(admin_client, client_num * gpus_per_server)
+            _init_nccl_broadcast(admin_client, client_num * rank_stride)
             for client_num, admin_client in enumerate(admin_clients)
         ]
     )
