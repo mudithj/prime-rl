@@ -16,6 +16,7 @@ from prime_rl.orchestrator.trajectories import (
     build_vlm_image_cache,
     interleave_rollout,
     offload_images_to_disk,
+    pretokenize_rollout_trajectory,
 )
 from prime_rl.transport import TrainingBatch, TrainingSample, setup_training_batch_sender
 from prime_rl.utils.pathing import get_log_dir
@@ -575,8 +576,11 @@ async def orchestrate(config: OrchestratorConfig):
                 f"({vlm_cache.num_unique_images} unique images from {vlm_cache.num_unique_examples} examples)"
             )
 
-        # Interleave rollouts in parallel (tokens already captured by RendererClient during rollout)
+        # Tokenize + interleave rollouts in parallel.
+        # The renderer tokenizes each trajectory step from messages (same chat template
+        # used during rollout), then interleave_rollout merges steps where extension holds.
         def process_rollout(rollout: vf.RolloutOutput, rollout_idx: int) -> list[TrainingSample] | None:
+            pretokenize_rollout_trajectory(rollout, renderer)
             return interleave_rollout(rollout, vlm_cache=vlm_cache, cache_key=rollout_idx)
 
         loop = asyncio.get_event_loop()

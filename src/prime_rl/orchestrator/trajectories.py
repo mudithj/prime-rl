@@ -9,9 +9,11 @@ from typing import Any
 import torch
 import verifiers as vf
 from PIL import Image
+from renderers.base import Renderer, build_trajectory_step
 
 from prime_rl.transport import TrainingSample
 from prime_rl.utils.logger import get_logger
+from prime_rl.utils.messages import deserialize_tool_calls, normalize_messages, strip_message_content
 
 # We use list() instead of deepcopy() for flat lists (token IDs, logprobs) - safe because
 # primitives are immutable. pixel_values/image_grid_thw are not mutated after creation.
@@ -36,6 +38,27 @@ def _align_routed_experts(
     topk = len(routed_experts[0][0])
     zero_entry = [[0] * topk for _ in range(num_layers)]
     return routed_experts + [zero_entry for _ in range(deficit)]
+
+
+def pretokenize_rollout_trajectory(
+    output: vf.RolloutOutput,
+    renderer: Renderer,
+) -> bool:
+    """Tokenize each trajectory step using the Renderer.
+
+    Called after rollout completes to produce prompt_ids/completion_ids
+    for training. The Renderer owns the tokenization — same chat template
+    used for rendering during rollout is used here for training tokens.
+    """
+    for step in output["trajectory"]:
+        if step["tokens"] is not None:
+            continue
+        prompt = normalize_messages(step.get("prompt"), default_role="user")
+        completion = normalize_messages(step.get("completion"), default_role="assistant")
+        prompt = strip_message_content(deserialize_tool_calls(prompt))
+        completion = strip_message_content(deserialize_tool_calls(completion))
+        step["tokens"] = build_trajectory_step(renderer, prompt, completion)
+    return True
 
 
 def interleave_rollout(

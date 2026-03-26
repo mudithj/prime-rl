@@ -7,7 +7,6 @@ import torch
 from datasets import Dataset, interleave_datasets, load_dataset
 from jaxtyping import Bool, Int
 from renderers.base import Renderer, build_supervised_sample
-from renderers.messages import deserialize_tool_calls, normalize_messages, strip_message_content
 from torch import Tensor
 from torch.distributed.checkpoint.stateful import Stateful
 from torch.utils.data import IterableDataset, get_worker_info
@@ -17,6 +16,7 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from prime_rl.configs.sft import DataConfig, LossMaskConfig, SFTDataConfig
 from prime_rl.trainer.world import get_world
 from prime_rl.utils.logger import get_logger
+from prime_rl.utils.messages import deserialize_tool_calls, normalize_messages, strip_message_content
 
 STACKING_DATASET_BUCKET_TIMEOUT = 10
 
