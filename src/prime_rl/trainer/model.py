@@ -190,9 +190,10 @@ def _configure_moe_ep_backend(model: nn.Module, config: ModelConfig) -> None:
     backend = config.ep_comm_backend
     language_model = get_language_model(model)
     for transformer_block in language_model.layers:
-        if not isinstance(transformer_block.mlp, MoE):
+        block_mlp = getattr(transformer_block, "mlp", None)
+        if not isinstance(block_mlp, MoE):
             continue
-        transformer_block.mlp.set_ep_comm_backend(backend)
+        block_mlp.set_ep_comm_backend(backend)
 
 
 def get_load_balance_stats(
@@ -691,16 +692,17 @@ def apply_ep(model: nn.Module, config: ModelConfig, parallel_dims: ParallelDims)
     language_model = get_language_model(model)
     for transformer_block in language_model.layers:
         block_mlp = getattr(transformer_block, "mlp", None)
-        if block_mlp is not None and isinstance(block_mlp, (MoE, LatentMoE)):
-            if config.ep_comm_backend == "standard":
-                parallelize_plan = ExpertParallel()
-            else:
-                parallelize_plan = DeepEPExpertParallel()
-            parallelize_module(
-                block_mlp.experts,
-                device_mesh=parallel_dims.get_mesh("ep"),
-                parallelize_plan=parallelize_plan,
-            )
+        if isinstance(block_mlp, MoE):
+            parallelize_plan = ExpertParallel() if config.ep_comm_backend == "standard" else DeepEPExpertParallel()
+        elif isinstance(block_mlp, LatentMoE):
+            parallelize_plan = ExpertParallel()
+        else:
+            continue
+        parallelize_module(
+            block_mlp.experts,
+            device_mesh=parallel_dims.get_mesh("ep"),
+            parallelize_plan=parallelize_plan,
+        )
 
 
 def _move_buffers_to_cuda(model: nn.Module, config: ModelConfig) -> None:
