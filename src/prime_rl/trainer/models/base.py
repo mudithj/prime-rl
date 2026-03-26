@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from torch import Tensor
 from transformers.modeling_utils import PreTrainedModel
@@ -66,8 +67,6 @@ class PreTrainedModelPrimeRL(PreTrainedModel):
         Default assumes mtp_layer has enorm/hnorm/eh_proj/block sub-modules
         following the DeepSeek-V3/GLM-4 pattern (per-layer fusion).
         """
-        import torch
-
         e = mtp_layer.enorm(token_embeds)
         h = mtp_layer.hnorm(hidden_states)
         combined = mtp_layer.eh_proj(torch.cat([e, h], dim=-1))

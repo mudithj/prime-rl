@@ -60,6 +60,7 @@ from prime_rl.orchestrator.vf_utils import (
     wait_for_env_servers,
 )
 from prime_rl.utils.client import (
+    fetch_spec_decode_acceptance_rate,
     init_nccl_broadcast,
     setup_inference_pool,
 )
@@ -702,6 +703,8 @@ async def orchestrate(config: OrchestratorConfig):
         # Group by example_id to average across rollouts within each problem
         by_example = results_df.groupby("example_id")
 
+        spec_decode_acceptance_rate = await fetch_spec_decode_acceptance_rate(inference_pool.admin_clients)
+
         solve_none, solve_all, effective_batch_size = compute_solve_rates(results_df)
         to_log = {
             # Progress metrics
@@ -770,6 +773,11 @@ async def orchestrate(config: OrchestratorConfig):
             **event_loop_lag_monitor.get_metrics(),
             # Rollout filter metrics
             **filter_metrics,
+            **(
+                {"inference/spec_decode_acceptance_rate": spec_decode_acceptance_rate}
+                if spec_decode_acceptance_rate is not None
+                else {}
+            ),
             # W&B axis
             "step": progress.step,
         }

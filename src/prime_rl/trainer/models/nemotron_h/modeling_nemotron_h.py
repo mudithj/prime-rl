@@ -6,8 +6,6 @@ Hybrid Mamba-Transformer-MoE architecture with three distinct layer types:
 - Attention layers (using shared FlashAttention/SDPA from prime-rl)
 """
 
-from typing import Optional
-
 import torch
 from torch import Tensor, nn
 from transformers.generation import GenerationMixin
@@ -416,9 +414,9 @@ class NemotronHModel(NemotronHPreTrainedModel):
     @auto_docstring
     def forward(
         self,
-        input_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
+        input_ids: torch.LongTensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        inputs_embeds: torch.FloatTensor | None = None,
     ) -> BaseModelOutputWithPast:
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -478,12 +476,12 @@ class NemotronHForCausalLM(NemotronHPreTrainedModel, GenerationMixin):
 
     def forward(
         self,
-        input_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
+        input_ids: torch.LongTensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        inputs_embeds: torch.FloatTensor | None = None,
+        labels: torch.LongTensor | None = None,
         logits_to_keep: int = 0,
-        temperature: Optional[torch.Tensor] = None,
+        temperature: torch.Tensor | None = None,
         **kwargs,
     ) -> PrimeLmOutput:
         if position_ids is None:

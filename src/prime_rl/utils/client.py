@@ -96,6 +96,21 @@ class StaticInferencePool:
         pass
 
 
+async def fetch_spec_decode_acceptance_rate(admin_clients: list[AsyncClient]) -> float | None:
+    """Scrape vLLM Prometheus /metrics for speculative decoding acceptance rate."""
+    drafted, accepted = 0.0, 0.0
+    for client in admin_clients:
+        resp = await client.get("/metrics", timeout=5.0)
+        if resp.status_code != 200:
+            continue
+        for line in resp.text.splitlines():
+            if line.startswith("vllm:spec_decode_num_draft_tokens_total"):
+                drafted += float(line.split()[-1])
+            elif line.startswith("vllm:spec_decode_num_accepted_tokens_total"):
+                accepted += float(line.split()[-1])
+    return accepted / drafted if drafted > 0 else None
+
+
 async def setup_inference_pool(
     client_config: ClientConfig, model_name: str, client_type: str = "openai_chat_completions"
 ) -> InferencePool:
