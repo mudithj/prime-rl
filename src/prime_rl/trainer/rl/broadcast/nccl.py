@@ -89,13 +89,12 @@ def preprocess_layer_checkpoint(
     layer_state_dict: dict[str, Tensor],
     layer_idx: int,
 ) -> dict[str, Tensor]:
-    if isinstance(model, PreTrainedModelPrimeRL):
+    if isinstance(model, PreTrainedModelPrimeRL) and model.is_prime_state_dict(layer_state_dict):
         if layer_idx < 0:
             model.convert_non_layer_to_hf(layer_state_dict)
-            return layer_state_dict
-        if model.is_prime_state_dict(layer_state_dict):
+        else:
             model.convert_layer_to_hf(layer_state_dict, layer_idx)
-            return layer_state_dict
+        return layer_state_dict
 
     from transformers.core_model_loading import revert_weight_conversion
 
@@ -108,7 +107,7 @@ def preprocess_layer_quantized(
     layer_idx: int,
 ) -> dict[str, Tensor]:
     if layer_idx < 0:
-        if isinstance(model, PreTrainedModelPrimeRL):
+        if isinstance(model, PreTrainedModelPrimeRL) and model.is_prime_state_dict(layer_state_dict):
             model.convert_non_layer_to_hf(layer_state_dict)
         return layer_state_dict
     return model.convert_layer_to_vllm_kernel(layer_state_dict, layer_idx, quantize_fp8=True)
