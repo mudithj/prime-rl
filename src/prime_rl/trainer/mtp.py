@@ -36,8 +36,8 @@ def _shift_left(t: Tensor, position_ids: Tensor | None = None, cp_group: dist.Pr
         if cp_group is not None and dist.get_world_size(group=cp_group) > 1:
             assert t.shape[0] == 1, "Context-parallel MTP expects a single local batch shard"
             next_position = _get_next_cp_first_value(position_ids, cp_group)
-            if next_position is not None:
-                next_value = _get_next_cp_first_value(t, cp_group)
+            next_value = _get_next_cp_first_value(t, cp_group)
+            if next_position is not None and next_value is not None:
                 continues_sequence = next_position > position_ids[..., -1:]
                 shifted[..., -1:] = torch.where(continues_sequence, next_value, torch.zeros_like(shifted[..., -1:]))
     return shifted
