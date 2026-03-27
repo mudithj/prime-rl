@@ -55,6 +55,93 @@ class InferencePool(Protocol):
         ...
 
 
+_SPEC_DECODE_NUM_DRAFTS_METRIC = "vllm:spec_decode_num_drafts_total"
+_SPEC_DECODE_NUM_ACCEPTED_METRIC = "vllm:spec_decode_num_accepted_tokens_total"
+_SPEC_ACCEPTANCE_LENGTH_METRIC = "spec/acceptance_length"
+
+
+def _parse_prometheus_counter_total(metrics_text: str, metric_name: str) -> float | None:
+    total = 0.0
+    found = False
+    for line in metrics_text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        parts = line.rsplit(None, 1)
+        if len(parts) != 2:
+            continue
+        sample_name, value_str = parts
+        if sample_name.split("{", 1)[0] != metric_name:
+            continue
+        total += float(value_str)
+        found = True
+    return total if found else None
+
+
+def _parse_spec_decode_counters(metrics_text: str) -> tuple[float | None, float | None]:
+    drafts = _parse_prometheus_counter_total(metrics_text, _SPEC_DECODE_NUM_DRAFTS_METRIC)
+    accepted = _parse_prometheus_counter_total(metrics_text, _SPEC_DECODE_NUM_ACCEPTED_METRIC)
+    if drafts is None or accepted is None:
+        return None, None
+    return drafts, accepted
+
+
+class _SpecDecodeMetricsTracker:
+    def __init__(self) -> None:
+        self._previous_totals: tuple[float, float] | None = None
+
+    def update(self, metrics_texts: list[str]) -> dict[str, float]:
+        if not metrics_texts:
+            return {}
+
+        total_drafts = 0.0
+        total_accepted = 0.0
+        for metrics_text in metrics_texts:
+            drafts, accepted = _parse_spec_decode_counters(metrics_text)
+            if drafts is None or accepted is None:
+                return {}
+            total_drafts += drafts
+            total_accepted += accepted
+
+        current_totals = (total_drafts, total_accepted)
+        if self._previous_totals is None:
+            self._previous_totals = current_totals
+            return {}
+
+        previous_drafts, previous_accepted = self._previous_totals
+        if total_drafts < previous_drafts or total_accepted < previous_accepted:
+            self._previous_totals = current_totals
+            return {}
+
+        delta_drafts = total_drafts - previous_drafts
+        delta_accepted = total_accepted - previous_accepted
+        self._previous_totals = current_totals
+        if delta_drafts <= 0:
+            return {}
+
+        # vLLM defines mean acceptance length as accepted draft tokens plus the bonus token.
+        return {_SPEC_ACCEPTANCE_LENGTH_METRIC: 1.0 + (delta_accepted / delta_drafts)}
+
+
+async def _fetch_inference_metrics(
+    admin_clients: list[AsyncClient], tracker: _SpecDecodeMetricsTracker
+) -> dict[str, float]:
+    if not admin_clients:
+        return {}
+
+    async def _fetch_metrics(admin_client: AsyncClient) -> str:
+        response = await admin_client.get("/metrics")
+        response.raise_for_status()
+        return response.text
+
+    results = await asyncio.gather(
+        *[_fetch_metrics(admin_client) for admin_client in admin_clients], return_exceptions=True
+    )
+    if any(isinstance(result, BaseException) for result in results):
+        return {}
+    metric_texts = [result for result in results if isinstance(result, str)]
+    return tracker.update(metric_texts)
+
+
 class StaticInferencePool:
     """Static inference pool with fixed client list."""
 

@@ -14,7 +14,7 @@ from prime_rl.orchestrator.buffer import Buffer
 from prime_rl.orchestrator.utils import get_sampling_args
 from prime_rl.orchestrator.vf_utils import get_seq_len, run_rollout
 from prime_rl.utils.async_utils import safe_cancel, safe_cancel_all
-from prime_rl.utils.client import InferencePool
+from prime_rl.utils.client import InferencePool, _SpecDecodeMetricsTracker, _fetch_inference_metrics
 from prime_rl.utils.logger import ProgressTracker, get_logger
 from prime_rl.utils.temp_scheduling import compute_temperature
 from prime_rl.utils.utils import (
@@ -121,6 +121,8 @@ class Scheduler:
         self.errored_rollouts_by_task: dict[str, int] = defaultdict(int)
         self.total_rollouts_by_task: dict[str, int] = defaultdict(int)
         self.last_batch_generation_time = 0.0
+        self._inference_metrics: dict[str, float] = {}
+        self._spec_decode_metrics = _SpecDecodeMetricsTracker()
 
     @property
     def uses_token_batching(self) -> bool:
@@ -361,6 +363,11 @@ class Scheduler:
         await env_for_task.rubric.score_group(cast(list[vf.State], completed_rollouts))
         return completed_rollouts
 
+    async def _refresh_inference_metrics(self) -> None:
+        self._inference_metrics = await _fetch_inference_metrics(
+            self.inference_pool.admin_clients, self._spec_decode_metrics
+        )
+
     async def generate_batch(self, step: int) -> list[vf.RolloutOutput]:
         """Continuously generates a batch of rollouts."""
         self.step = step
@@ -464,6 +471,7 @@ class Scheduler:
         batch_rollouts = self.finalize_batch_rollouts(batch_rollouts)
         pbar.close()
         self.last_batch_generation_time = time.perf_counter() - batch_start_time
+        await self._refresh_inference_metrics()
         return batch_rollouts
 
     async def stop(self) -> None:
@@ -535,5 +543,6 @@ class Scheduler:
 
         # Add inference pool metrics (e.g. elastic pool server counts)
         metrics.update(self.inference_pool.get_metrics())
+        metrics.update(self._inference_metrics)
 
         return metrics
