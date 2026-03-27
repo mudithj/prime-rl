@@ -5,7 +5,6 @@ import torch
 from prime_rl.trainer.models.nemotron_h.configuration_nemotron_h import NemotronHConfig
 from prime_rl.trainer.models.nemotron_h.modeling_nemotron_h import NemotronHMambaLayer
 
-
 _NONTRIVIAL_MAMBA_EXPAND = dict(
     hidden_size=300,
     mamba_num_heads=7,
