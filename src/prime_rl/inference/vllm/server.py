@@ -133,7 +133,6 @@ def resolve_tool_call_parser(model_name: str, tool_call_parser: str | None) -> s
 
 logger = get_logger()
 from prime_rl.inference.patches import (
-    monkey_patch_fused_moe_lora_dp,
     monkey_patch_harmony_stop_token_propagation,
     monkey_patch_hermes_tool_parser_thread_safety,
     monkey_patch_load_lora_adapter,
@@ -156,8 +155,6 @@ monkey_patch_hermes_tool_parser_thread_safety()
 # NOTE: Monkeypatch HF tokenizer to fix "Already borrowed" RuntimeError during concurrent chat template processing
 # Can be removed once https://github.com/vllm-project/vllm/pull/36557 is merged and we upgrade vllm
 monkey_patch_tokenizer_thread_safety()
-# NOTE: Fix LoRA + MoE + DP>1 corrupted output (vLLM 0.17.0 bug)
-monkey_patch_fused_moe_lora_dp()
 
 logger = init_logger("vllm.entrypoints.openai.api_server")
 
