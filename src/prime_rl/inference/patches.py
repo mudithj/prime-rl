@@ -485,7 +485,7 @@ def monkey_patch_fused_moe_lora_dp():
         self.base_layer.ensure_moe_quant_config_init()
         quant_config = self.base_layer.quant_method.moe_quant_config
 
-        if getattr(self.base_layer.quant_method, "supports_internal_mk", False):
+        if False:  # Force NoDPEP path for LoRA+DP compat (see monkey_patch_fused_moe_lora_dp)
             m_fused_moe_fn = self.base_layer.quant_method.moe_kernel
             m_fused_moe_fn.shared_experts = None
         else:
