@@ -258,7 +258,6 @@ if [ "$SLURM_PROCID" -lt "$NUM_INFER_NODES" ]; then
     # Start vllm-router on the first node of each replica (PD mode)
     if [ "$RANK_IN_REPLICA" -eq 0 ]; then
         ROUTER_LOG="$OUTPUT_DIR/logs/inference/router_${REPLICA_IDX}.log"
-        ROUTER_METRICS_PORT=$((29000 + (SLURM_JOB_ID % 1000) + REPLICA_IDX))
         echo "Starting vllm-router (PD) on $LOCAL_IP:$ROUTER_PORT for replica $REPLICA_IDX" | tee $ROUTER_LOG
 
         REPLICA_ROUTER_ARGS=$(echo "$ALL_ROUTER_ARGS" | cut -d"|" -f$((REPLICA_IDX + 1)))
@@ -269,8 +268,6 @@ if [ "$SLURM_PROCID" -lt "$NUM_INFER_NODES" ]; then
             $REPLICA_ROUTER_ARGS \
             --host 0.0.0.0 \
             --port $ROUTER_PORT \
-            --prometheus-host 127.0.0.1 \
-            --prometheus-port $ROUTER_METRICS_PORT \
             --intra-node-data-parallel-size 1 \
             --worker-startup-timeout-secs 1200 \
             >> $ROUTER_LOG 2>&1 &
@@ -288,7 +285,6 @@ if [ "$SLURM_PROCID" -lt "$NUM_INFER_NODES" ]; then
     # Start vllm-router on the first node of each replica
     if [ "$RANK_IN_REPLICA" -eq 0 ]; then
         ROUTER_LOG="$OUTPUT_DIR/logs/inference/router_${REPLICA_IDX}.log"
-        ROUTER_METRICS_PORT=$((29000 + (SLURM_JOB_ID % 1000) + REPLICA_IDX))
         echo "Starting vllm-router on $LOCAL_IP:$ROUTER_PORT for replica $REPLICA_IDX" | tee $ROUTER_LOG
 
         REPLICA_ROUTER_ARGS=$(echo "$ALL_ROUTER_ARGS" | cut -d"|" -f$((REPLICA_IDX + 1)))
@@ -298,8 +294,6 @@ if [ "$SLURM_PROCID" -lt "$NUM_INFER_NODES" ]; then
             --worker-urls $REPLICA_ROUTER_ARGS \
             --host 0.0.0.0 \
             --port $ROUTER_PORT \
-            --prometheus-host 127.0.0.1 \
-            --prometheus-port $ROUTER_METRICS_PORT \
             --worker-startup-timeout-secs 1200 \
             >> $ROUTER_LOG 2>&1 &
     fi
