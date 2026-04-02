@@ -502,6 +502,17 @@ wheels = [
 ]
 
 [[package]]
+name = "cr-verification"
+version = "0.1.0"
+source = { editable = "../environments/cr_verification" }
+dependencies = [
+    { name = "verifiers", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "verifiers", specifier = ">=0.1.10" }]
+
+[[package]]
 name = "cryptography"
 version = "46.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2626,6 +2637,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiolimiter", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "beartype", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "cr-verification", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "datasets", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "dion", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "flash-linear-attention", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -2713,6 +2725,7 @@ requires-dist = [
     { name = "beartype", specifier = ">=0.21.0" },
     { name = "code-env", marker = "extra == 'envs'", index = "https://hub.primeintellect.ai/primeintellect/simple/" },
     { name = "color-codeword", marker = "extra == 'envs'", index = "https://hub.primeintellect.ai/primeintellect/simple/" },
+    { name = "cr-verification", editable = "../environments/cr_verification" },
     { name = "datasets", specifier = ">=4.0.0" },
     { name = "deep-ep", marker = "platform_machine == 'x86_64' and extra == 'disagg'", url = "https://github.com/samsja/flash-attn-builds/releases/download/v0.2/deep_ep-1.2.1+73b6ea4-cp312-cp312-linux_x86_64.whl" },
     { name = "deep-gemm", marker = "platform_machine == 'x86_64' and extra == 'disagg'", url = "https://github.com/samsja/flash-attn-builds/releases/download/v0.2/deep_gemm-2.3.0+477618c-cp312-cp312-linux_x86_64.whl" },

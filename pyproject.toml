@@ -34,6 +34,7 @@ dependencies = [
     "dion",
     "tilelang>=0.1.8",
     "flash-linear-attention",
+    "cr-verification",
 ]
 
 [project.scripts]
@@ -139,6 +140,7 @@ deep-ep = { url = "https://github.com/samsja/flash-attn-builds/releases/download
 deep-gemm = { url = "https://github.com/samsja/flash-attn-builds/releases/download/v0.2/deep_gemm-2.3.0+477618c-cp312-cp312-linux_x86_64.whl" }
 nixl-cu12 = { url = "https://github.com/samsja/flash-attn-builds/releases/download/v0.2/nixl_cu12-0.10.1-cp312-cp312-linux_x86_64.whl" }
 flash-linear-attention = { git = "https://github.com/fla-org/flash-linear-attention" }
+cr-verification = { path = "../environments/cr_verification", editable = true }
 
 [tool.uv.extra-build-dependencies]
 flash-attn = [{ requirement = "torch", match-runtime = true }]
