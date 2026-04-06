@@ -437,7 +437,17 @@ def train(config: TrainerConfig):
 
             # Backward pass
             with maybe_record_function("backward"):
-                loss.backward()
+                try:
+                    loss.backward()
+                except RuntimeError as e:
+                    if memory_profiler is not None:
+                        import pickle
+                        snap_dir = memory_profiler.snapshot_path / f"oom_step_{memory_profiler.step_num}"
+                        snap_dir.mkdir(parents=True, exist_ok=True)
+                        with open(snap_dir / f"rank_{get_world().rank}.pickle", "wb") as f:
+                            pickle.dump(torch.cuda.memory._snapshot(), f)
+                        logger.error(f"OOM detected, memory snapshot saved to {snap_dir}")
+                    raise
 
             # Add relevant tensors to tensor dict for logging purposes
             tensors["trainer_probs"].append(torch.exp(out["logprobs"])[loss_mask].detach().to("cpu"))

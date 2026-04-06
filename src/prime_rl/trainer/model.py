@@ -501,7 +501,7 @@ def load_dcp_from_hf(model: nn.Module, config: ModelConfig, parallel_dims: Paral
                 "Found HF weight format in snapshot state dict and PrimeRL weight format in model state dict. Trying to auto-convert..."
             )
             snapshot_path = snapshot_path / "prime"
-            if not snapshot_path.exists() and get_world().is_master:
+            if not snapshot_path.exists() and get_world().local_rank == 0:
                 logger.debug(
                     f"Converting snapshot state dict to PrimeRL format and saving to {snapshot_path} on master rank. This is a one-time operation."
                 )
@@ -515,7 +515,7 @@ def load_dcp_from_hf(model: nn.Module, config: ModelConfig, parallel_dims: Paral
                 "Found PrimeRL weight format in snapshot state dict and HF weight format in model state dict. Trying to auto-convert..."
             )
             snapshot_path = snapshot_path / "hf"
-            if not snapshot_path.exists() and get_world().is_master:
+            if not snapshot_path.exists() and get_world().local_rank == 0:
                 logger.debug(
                     f"Converting snapshot state dict to HF format and saving to {snapshot_path} on master rank. This is a one-time operation."
                 )
